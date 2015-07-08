@@ -134,7 +134,10 @@ while peaksremaining
     for ipeak = 1:numel(peaks)
       % apply a bandstop filter
       disp(['applying filter for peak at ' num2str(peaks(ipeak)) 'Hz +/- ' num2str(bandwidth(ipeak)) 'Hz'])
+      %%% FieldTrip code
       filtdat = ft_preproc_bandstopfilter(filtdat, fsample, [peaks(ipeak)-bandwidth(ipeak) peaks(ipeak)+bandwidth(ipeak)], param.filtord, param.filttype, param.filtdir);
+      
+      %%%
     end
     
     % get pow and process it, using same zval-ling as used initially
@@ -220,7 +223,6 @@ xlabel('frequency (Hz)')
 ylabel('log mean (over channels) power')
 legend([l1 l2 l3],'orignal PSD','identified as line spectrum','filtered PSD');
 title('result of bandstop filtering line spectra')
-
 
 % 2) original PSD and filtered PSD in log/norm space, for input Welch window and for a 50ms window
 figure('numbertitle','off','name','original/filtered mean PSD in log/normal space with input Welch, and Welch = 50ms')
@@ -318,9 +320,13 @@ function [procpow, zparam] = processpow(pow,freq,varargin)
 
 % get variable input arg
 if nargin == 2
-  zparam = [];
+  zparam    = [];
+  peaks     = [];
+  bandwidth = [];
 elseif nargin == 3
-    zparam = varargin{1};
+  zparam    = varargin{1};
+
+  
 elseif nargin == 5
   zparam    = varargin{1};
   peaks     = varargin{2};
@@ -332,6 +338,8 @@ end
 % log pow and freq axis
 logpow  = log10(pow);
 logfreq = log10(freq);
+
+% pad out peaks
 
 % filter it with a very low highpass. The annoying trick I applied here, the variant of mirror padding, is because I couldn't 
 % get a decent filter response at low (approximate) order without inducing edge artifacts
