@@ -201,14 +201,14 @@ lnspectra.filtpsd    = pow; % latest pow is maximally filtered pow
 % 1) original PSD in log/norm space with found peaks highlighted and filtered spectrum on top of it
 figure('numbertitle','off','name','original and filtered mean PSD in log/normal space')
 hold on
-l1 = plot(freq,mean(log10(lnspectra.origpsd)),'color',rgb('green'));
+l1 = plot(freq,mean(log10(lnspectra.origpsd),1),'color',rgb('green'));
 for ipeak = 1:numel(peaks)
   begfreq = peaks(ipeak)-bandwidth(ipeak);
   endfreq = peaks(ipeak)+bandwidth(ipeak);
   ind = find(freq>=begfreq & freq<=endfreq);
-  l2 = plot(freq(ind),mean(log10(lnspectra.origpsd(:,ind))),'color',rgb('red'));
+  l2 = plot(freq(ind),mean(log10(lnspectra.origpsd(:,ind)),1),'color',rgb('red'));
 end
-l3 = plot(freq,mean(log10(lnspectra.filtpsd)),'color',rgb('blue'));
+l3 = plot(freq,mean(log10(lnspectra.filtpsd),1),'color',rgb('blue'));
 xlabel('frequency (Hz)')
 ylabel('log mean (over channels) power')
 legend([l1 l2 l3],'orignal PSD','identified as line spectrum','filtered PSD');
