@@ -49,7 +49,8 @@ function lnspectra = rmr_findlinespectra(dat,fsample,searchrange,param)
 %              param.filttype = string, type of bandstop filter  'but' (default),  'fir', etc (FieldTrip-style name)
 %               param.filtord = scalar, order of bandstop filter (default = 2)
 %               param.filtdir = string, direction of bandstop filter 'twopass' (default), 'onepass', etc (FieldTrip-style name)
-%                 param.maxit = scalar, maximum iterations (default = 5)
+%            param.maxouterit = scalar, maximum iterations of outer loop (default = 5)
+%            param.maxinnerit = scalar, maximum iterations of inner loop (default = 5)
 %
 %
 % 
@@ -80,7 +81,8 @@ if ~isfield(param,   'taper'),       param.taper       = 'hanning';    end
 if ~isfield(param,   'filttype'),    param.filttype    = 'but';        end
 if ~isfield(param,   'filtord'),     param.filtord     = 2;            end
 if ~isfield(param,   'filtdir'),     param.filtdir     = 'twopass';    end
-if ~isfield(param,   'maxit'),       param.maxit       = 5;            end
+if ~isfield(param,   'maxouterit'),  param.maxouterit  = 5;            end
+if ~isfield(param,   'maxinnerit'),  param.maxinnerit  = 5;            end
 
 % sanity checks
 if size(dat,2)<size(dat,1)
@@ -159,7 +161,7 @@ while peaksremaining
     end
     
     % stop if it goes on too long
-    if itinner == param.maxit
+    if itinner == param.maxinnerit
       warning('inner loop reached maxitt, likely param.zthresh is too low')
       break
     end
@@ -173,7 +175,7 @@ while peaksremaining
   dat = filtdat;
   
   % stop if it goes on too long
-  if itouter == param.maxit
+  if itouter == param.maxouterit
     warning('outer loop reached maxitt, likely param.zthresh is too low')
     break
   end
