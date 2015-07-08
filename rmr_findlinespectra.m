@@ -363,7 +363,7 @@ fakefsample = 1./(mean(diff(freq))); % to make things easy, consider 1Hz as 1s
 % there's an cumbersome trade-off here: the smaller the high pass, the more slow wiggles stay in there, and fitting capability is reduced.
 % but the higher the high pass, the more the 'slower' edges of broad line spectra get pushed to lower freqs, which also affects 
 % fitting capability
-hpfreq  = 1/500; % X is now a frequency whose "cycle length" is 500Hz
+hpfreq  = 1/250; % X is now a frequency whose "cycle length" is 500Hz
 % filter settings are hardcoded and not meant to be changed
 filttype = 'but';
 filtord  = 2;
