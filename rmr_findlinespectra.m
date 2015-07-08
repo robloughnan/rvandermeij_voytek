@@ -49,6 +49,7 @@ function lnspectra = rmr_findlinespectra(dat,fsample,searchrange,param)
 %              param.filttype = string, type of bandstop filter  'but' (default),  'fir', etc (FieldTrip-style name)
 %               param.filtord = scalar, order of bandstop filter (default = 2)
 %               param.filtdir = string, direction of bandstop filter 'twopass' (default), 'onepass', etc (FieldTrip-style name)
+%                 param.maxit = scalar, maximum iterations (default = 5)
 %
 %
 % 
@@ -79,6 +80,7 @@ if ~isfield(param,   'taper'),       param.taper       = 'hanning';    end
 if ~isfield(param,   'filttype'),    param.filttype    = 'but';        end
 if ~isfield(param,   'filtord'),     param.filtord     = 2;            end
 if ~isfield(param,   'filtdir'),     param.filtdir     = 'twopass';    end
+if ~isfield(param,   'maxit'),       param.maxit       = 5;            end
 
 % sanity checks
 if size(dat,2)<size(dat,1)
@@ -97,9 +99,9 @@ bandwidth = [];
 pspecpeaks = [];
 pspecbandw = [];
 pspecprpow = [];
-count = 0;
+itouter = 0;
 while peaksremaining
-  count = count + 1;
+  itouter = itouter + 1;
   
   % get pow
   [pow, freq] = getpow(dat,fsample,searchrange,param.welchwin,param.taper);
@@ -107,26 +109,28 @@ while peaksremaining
   [procpow,zparam] = processpow(pow,freq,[],peaks,bandwidth);
   
   % save round specific processed pow
-  pspecprpow{count} = procpow;
+  pspecprpow{itouter} = procpow;
   
   % find  peaks
   [peaks, bandwidth] = findpeaks(procpow,freq,param.zthresh,param.bandwstep);
   if ~isempty(peaks)
-    disp(['found ' num2str(numel(peaks)) ' line spectra in pass ' num2str(count)])
+    disp(['found ' num2str(numel(peaks)) ' line spectra in pass ' num2str(itouter)])
     for ipeak = 1:numel(peaks)
       disp(['line spectra at ' num2str(peaks(ipeak)) 'Hz +/- ' num2str(bandwidth(ipeak)) 'Hz'])
     end
   else
     % no more peaks found, quit
     peaksremaining = false;
-    disp(['no more peaks found in pass ' num2str(count)])
+    disp(['no more peaks found in pass ' num2str(itouter)])
   end
   
   
   %%%%%%%%%%%%%%%%%%%%%
   % iteratively increase bandwidth till all peaks are gone
   peakgone = false(size(peaks));
+  itinner = 0;
   while ~all(peakgone)
+    itinner = itinner + 1;
     
     % filter data
     filtdat = dat;
@@ -156,15 +160,26 @@ while peaksremaining
         peakgone(ipeak) = true;
       end
     end
+    
+    % stop if it goes on too long
+    if itinner == param.maxit
+      warning('inner loop reached maxitt, likely param.zthresh is too low')
+      break
+    end
   end
   %%%%%%%%%%%%%%%%%%%%%
   
   % save pass-specific peaks and bandwidth
-  pspecpeaks{count} = peaks;
-  pspecbandw{count} = bandwidth;
+  pspecpeaks{itouter} = peaks;
+  pspecbandw{itouter} = bandwidth;
   % set filtered dat to dat for next round
   dat = filtdat;
-
+  
+  % stop if it goes on too long
+  if itouter == param.maxit
+    warning('outer loop reached maxitt, likely param.zthresh is too low')
+    break
+  end
 end
 %%%%%%%%%%%%%%%%%%%%%
 % gather peaks and bandwidths
@@ -342,10 +357,10 @@ logfreq = log10(freq);
 % get a decent filter response at low (approximate) order without inducing edge artifacts
 % create a fake time using the frequency resolution
 fakefsample = 1./(mean(diff(freq))); % to make things easy, consider 1Hz as 1s
-faketimelen = (freq(end)-freq(1));
 % make filter which killes everything whose frequeny doens't fits less than X times in the whole fake time signal
 % there's an cumbersome trade-off here: the smaller X, the more wiggles stay in there, and fitting capability is reduced.
 % but the higher X, the more the 'slower' edges of broad line spectra get pushed down, which also affects fitting capability
+%faketimelen = (freq(end)-freq(1));
 %hpfreq  = 6/faketimelen;
 hpfreq  = 1/(10*fakefsample); % X is now a frequency whose "cycle length" is 10Hz
 % filter settings are hardcoded and not meant to be changed
