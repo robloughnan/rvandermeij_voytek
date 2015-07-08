@@ -40,7 +40,7 @@ function lnspectra = rmr_findlinespectra(dat,fsample,searchrange,param)
 %                Input:
 %                         dat = Nchan X Nsample spatio-temporal matrix 
 %                     fsample = scalar, sampling rate in Hz
-%                 searchrange = 1x2 vector, frequency range to search in, in Hz
+%                 searchrange = 1x2 vector, frequency range in Hz to search in [freqmin freqmax]
 %                       param = structure, containing additional inputs
 %               param.zthresh = scalar, Z-value to use as threshold for catching peaks (default = 2)
 %              param.welchwin = scalar, length in seconds of Welch window to use for PSD (default = 10)
@@ -72,7 +72,7 @@ function lnspectra = rmr_findlinespectra(dat,fsample,searchrange,param)
 %
 
 % set defaults 
-if ~isfield(param,   'zthresh'),     param.zthresh     = 2;           end
+if ~isfield(param,   'zthresh'),     param.zthresh     = 2;            end
 if ~isfield(param,   'welchwin'),    param.welchwin    = 10;           end
 if ~isfield(param,   'bandwstep'),   param.bandwstep   = 0.25;         end
 if ~isfield(param,   'taper'),       param.taper       = 'hanning';    end
