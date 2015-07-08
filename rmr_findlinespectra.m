@@ -85,6 +85,9 @@ if size(dat,2)<size(dat,1)
   error('dat has more channels than samples')
 end
 
+% save original data for later use
+origdat = dat;
+
 
 %%%%%%%%%%%%%%%%%%%%%
 % iteratively find peaks, and iteratively adjust bandwidth of the peaks found
@@ -104,10 +107,7 @@ while peaksremaining
   % process pow
   [procpow,zparam] = processpow(pow,freq,[],peaks,bandwidth);
   
-  % save origpow for output if first pass and save round specific processed pow
-  if count == 1 
-    origpow = pow;
-  end
+  % save round specific processed pow
   pspecprpow{count} = procpow;
   
   % find  peaks
@@ -182,6 +182,13 @@ end
 edgeartlen = max(edgeartlen);
 
 
+% produce origpow for output structure, and create some additional pows for plotting
+[origpow, freqorig]     = getpow(origdat,fsample,searchrange,param.welchwin,param.taper);
+[origpow50ms, freg50ms] = getpow(origdat,fsample,searchrange,0.050,param.taper);
+[filtpow, freqorig]     = getpow(dat,fsample,searchrange,param.welchwin,param.taper);
+[filtpow50ms, freg50ms] = getpow(dat,fsample,searchrange,0.050,param.taper);
+
+
 % create output structure
 lnspectra = [];
 lnspectra.peak       = peaks;
@@ -212,8 +219,20 @@ l3 = plot(freq,mean(log10(lnspectra.filtpsd),1),'color',rgb('blue'));
 xlabel('frequency (Hz)')
 ylabel('log mean (over channels) power')
 legend([l1 l2 l3],'orignal PSD','identified as line spectrum','filtered PSD');
+title('result of bandstop filtering line spectra')
 
-% 2) z-valued the original PSD in log/norm space with found peaks highlighted and filtered spectrum on top of it
+
+% 2) original PSD and filtered PSD in log/norm space, for input Welch window and for a 50ms window
+figure('numbertitle','off','name','original/filtered mean PSD in log/normal space with input Welch, and Welch = 50ms')
+hold on
+plot(freqorig,mean(log10(origpow),1),'color',rgb('light blue'))
+plot(freg50ms,mean(log10(origpow50ms),1),'color',rgb('blue'))
+plot(freqorig,mean(log10(filtpow),1),'color',rgb('light green'))
+plot(freg50ms,mean(log10(filtpow50ms),1),'color',rgb('green'))
+legend(['original PSD ' num2str(param.welchwin) 's Welch'],'original PSD 50ms Welch',['filtered PSD ' num2str(param.welchwin) 's Welch'],'filtered PSD 50ms Welch')
+title('bleeding of line spectra into neighboring frequencies')
+
+% 3) z-valued the original PSD in log/norm space with found peaks highlighted and filtered spectrum on top of it
 figure('numbertitle','off','name','processed PSD of each pass in log/normal space')
 npass = numel(pspecpeaks);
 for ipass = 1:npass
@@ -239,6 +258,8 @@ for ipass = 1:npass
   set(gca,'xlim',[freq(1) freq(end)])
 end
 %%%%%%%%%%%%%%%%%
+
+
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
