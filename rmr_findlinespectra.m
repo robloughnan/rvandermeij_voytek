@@ -61,6 +61,7 @@ function lnspectra = rmr_findlinespectra(dat,fsample,searchrange,param)
 %           lnspectra.filtord = scalar, order of  bandstop filter used
 %           lnspectra.filtdir = string, filter direction of bandstop filter used
 %        lnspectra.edgeartlen = scalar, length in seconds of the edge artifact to be removed
+%              lnspectra.freq = 1xN vector, freq axis for PSDs below
 %           lnspectra.origpsd = 1xN vector, PSD before filtering, for inspection purposes
 %           lnspectra.filtpsd = 1xN vector, PSD after filtering, for inspection purposes
 % 
@@ -213,6 +214,7 @@ lnspectra.filttype   = param.filttype;
 lnspectra.filtord    = param.filtord;
 lnspectra.filtdir    = param.filtdir;
 lnspectra.edgeartlen = edgeartlen;
+lnspectra.freq       = freqorig; 
 lnspectra.origpsd    = origpow;
 lnspectra.filtpsd    = pow; % latest pow is maximally filtered pow
 
