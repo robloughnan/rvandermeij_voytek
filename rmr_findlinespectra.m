@@ -137,10 +137,7 @@ while peaksremaining
     for ipeak = 1:numel(peaks)
       % apply a bandstop filter
       disp(['applying filter for peak at ' num2str(peaks(ipeak)) 'Hz +/- ' num2str(bandwidth(ipeak)) 'Hz'])
-      %%% FieldTrip code
       filtdat = ft_preproc_bandstopfilter(filtdat, fsample, [peaks(ipeak)-bandwidth(ipeak) peaks(ipeak)+bandwidth(ipeak)], param.filtord, param.filttype, param.filtdir);
-      
-      %%%
     end
     
     % get pow and process it, using same zval-ling as used initially
