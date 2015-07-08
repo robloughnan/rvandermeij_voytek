@@ -375,12 +375,17 @@ postpad = NaN(nchan,padlen);
 % extrapolate freq to both sides
 prefreq  = freq(1:padlen)-(freq(padlen+1)-freq(1));
 postfreq = freq(end-padlen+1:end) + (freq(end)-freq(end-padlen));
+if exist('rmr_robustfit.m','file')
+  hfun = @rmr_robustfit;
+else
+  hfun = @robustfit;
+end
 for ichan = 1:size(logpow,1)
   % prepad
-  offschi   = rmr_robustfit(freq(1:padlen),logpow(ichan,1:padlen));
+  offschi   = feval(hfun,freq(1:padlen),logpow(ichan,1:padlen));
   prepad(ichan,:) = (offschi(1) + (offschi(2).*prefreq));
   % postpad
-  offschi   = rmr_robustfit(freq(end-padlen+1:end),logpow(ichan,end-padlen+1:end));
+  offschi   = feval(hfun,freq(end-padlen+1:end),logpow(ichan,end-padlen+1:end));
   postpad(ichan,:) = (offschi(1) + (offschi(2).*postfreq));
 end
 filtpow = [prepad logpow postpad];
