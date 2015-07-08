@@ -354,14 +354,15 @@ logfreq = log10(freq);
 nchan = size(logpow,1);
 
 % filter it with a very low highpass. The annoying trick I applied here, 'funny padding', is because I couldn't 
-% get a decent filter response at low (approximate) order without inducing edge artifacts
+% get a decent filter response at low (approximate) order without inducing edge artifacts. I use a filter, instead of slope
+% fitting, to straigthen it out, because I want this to also work for data closer to the oscillatory range of 
+% frequencies, e.g. starting to search from 40Hz onwards. 
 % create a fake time using the frequency resolution
 fakefsample = 1./(mean(diff(freq))); % to make things easy, consider 1Hz as 1s
-% make filter which killes everything whose frequeny doens't fits less than X times in the whole fake time signal
-% there's an cumbersome trade-off here: the smaller X, the more wiggles stay in there, and fitting capability is reduced.
-% but the higher X, the more the 'slower' edges of broad line spectra get pushed down, which also affects fitting capability
-%faketimelen = (freq(end)-freq(1));
-%hpfreq  = 6/faketimelen;
+% make high pass filter to suppress slow wiggles. 
+% there's an cumbersome trade-off here: the smaller the high pass, the more slow wiggles stay in there, and fitting capability is reduced.
+% but the higher the high pass, the more the 'slower' edges of broad line spectra get pushed to lower freqs, which also affects 
+% fitting capability
 hpfreq  = 1/500; % X is now a frequency whose "cycle length" is 500Hz
 % filter settings are hardcoded and not meant to be changed
 filttype = 'but';
