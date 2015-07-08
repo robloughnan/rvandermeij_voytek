@@ -350,7 +350,10 @@ end
 logpow  = log10(pow);
 logfreq = log10(freq);
 
-% filter it with a very low highpass. The annoying trick I applied here, the variant of mirror padding, is because I couldn't 
+% set basics
+nchan = size(logpow,1);
+
+% filter it with a very low highpass. The annoying trick I applied here, 'funny padding', is because I couldn't 
 % get a decent filter response at low (approximate) order without inducing edge artifacts
 % create a fake time using the frequency resolution
 fakefsample = 1./(mean(diff(freq))); % to make things easy, consider 1Hz as 1s
@@ -359,25 +362,29 @@ fakefsample = 1./(mean(diff(freq))); % to make things easy, consider 1Hz as 1s
 % but the higher X, the more the 'slower' edges of broad line spectra get pushed down, which also affects fitting capability
 %faketimelen = (freq(end)-freq(1));
 %hpfreq  = 6/faketimelen;
-hpfreq  = 1/(10*fakefsample); % X is now a frequency whose "cycle length" is 10Hz
+hpfreq  = 1/500; % X is now a frequency whose "cycle length" is 500Hz
 % filter settings are hardcoded and not meant to be changed
 filttype = 'but';
 filtord  = 2;
 filtdir  = 'twopass';
-% apply filtering with variant of 'mirror' padding
+% apply filtering with 'slope padding': pad out the edges according to the slope
 padlen  = 100*fakefsample; % 100Hz 
-prepad  = logpow(:,1:padlen)-repmat(logpow(:,padlen)-logpow(:,1),[1 padlen]); % prepad is start of powspctrm, copied, and realigned to the start of the spectrum. This is to maintain the slope in the start of the spectrum, which we want this pad out smoothly to aid filtering
-postpad = logpow(:,end:-1:end-padlen); % postpad is a mirror of the edge
+prepad  = NaN(nchan,padlen);
+postpad = NaN(nchan,padlen);
+% extrapolate freq to both sides
+prefreq  = freq(1:padlen)-(freq(padlen+1)-freq(1));
+postfreq = freq(end-padlen+1:end) + (freq(end)-freq(end-padlen));
+for ichan = 1:size(logpow,1)
+  % prepad
+  offschi   = rmr_robustfit(freq(1:padlen),logpow(ichan,1:padlen));
+  prepad(ichan,:) = (offschi(1) + (offschi(2).*prefreq));
+  % postpad
+  offschi   = rmr_robustfit(freq(end-padlen+1:end),logpow(ichan,end-padlen+1:end));
+  postpad(ichan,:) = (offschi(1) + (offschi(2).*postfreq));
+end
 filtpow = [prepad logpow postpad];
 filtpow = ft_preproc_highpassfilter(filtpow, fakefsample, hpfreq, filtord, filttype, filtdir);
-filtpow = filtpow(:,(padlen+1):end-(padlen+1)); % remove padding
-
-% keeping here for playing around, not helping currently
-% % fit using rmr_robustfit
-% for ichan = 1:nchan
-%   offschi = rmr_robustfit(logfreq,filtpow(ichan,:));
-%   filtpow(ichan,:) = filtpow(ichan,:) - (offschi(1) + offschi(2).*logfreq);
-% end
+filtpow = filtpow(:,(padlen+1):end-(padlen)); % remove padding
 
 % zval it, and output mean/std as zparam
 if isempty(zparam)
@@ -398,6 +405,7 @@ end
 procpow  = (filtpow - zparam(1)) ./ zparam(2);
 procpow  = mean(procpow,1);
 %%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 
 
