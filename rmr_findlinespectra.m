@@ -100,7 +100,6 @@ pspecprpow = [];
 count = 0;
 while peaksremaining
   count = count + 1;
-    
   
   % get pow
   [pow, freq] = getpow(dat,fsample,searchrange,param.welchwin,param.taper);
@@ -325,8 +324,8 @@ if nargin == 2
   bandwidth = [];
 elseif nargin == 3
   zparam    = varargin{1};
-
-  
+  peaks     = [];
+  bandwidth = [];  
 elseif nargin == 5
   zparam    = varargin{1};
   peaks     = varargin{2};
@@ -339,8 +338,6 @@ end
 logpow  = log10(pow);
 logfreq = log10(freq);
 
-% pad out peaks
-
 % filter it with a very low highpass. The annoying trick I applied here, the variant of mirror padding, is because I couldn't 
 % get a decent filter response at low (approximate) order without inducing edge artifacts
 % create a fake time using the frequency resolution
@@ -349,7 +346,8 @@ faketimelen = (freq(end)-freq(1));
 % make filter which killes everything whose frequeny doens't fits less than X times in the whole fake time signal
 % there's an cumbersome trade-off here: the smaller X, the more wiggles stay in there, and fitting capability is reduced.
 % but the higher X, the more the 'slower' edges of broad line spectra get pushed down, which also affects fitting capability
-hpfreq  = 6/faketimelen;
+%hpfreq  = 6/faketimelen;
+hpfreq  = 1/(10*fakefsample); % X is now a frequency whose "cycle length" is 10Hz
 % filter settings are hardcoded and not meant to be changed
 filttype = 'but';
 filtord  = 2;
