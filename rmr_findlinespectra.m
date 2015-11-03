@@ -191,10 +191,10 @@ bandwidth = cat(2,pspecbandw{:});
 edgeartlen = NaN(1,numel(peaks));
 for ipeak = 1:numel(peaks)
   fakedat = zeros(1,round(10*fsample));
-  fakedat(round(5*fsample)) = 1;
+  fakedat(1) = 1;
   impresp  = ft_preproc_bandstopfilter(fakedat, fsample, [peaks(ipeak)-bandwidth(ipeak) peaks(ipeak)+bandwidth(ipeak)], param.filtord, param.filttype, param.filtdir);
   impresp  = impresp ./ sum(abs(impresp));
-  edgeartlen(ipeak) = ((find(cumsum(abs(impresp))>0.98,1)-round(5*fsample))*2)./fsample;
+  edgeartlen(ipeak) = (find(cumsum(abs(impresp))>0.99,1)*2)./fsample;
 end
 edgeartlen = max(edgeartlen);
 
@@ -312,6 +312,7 @@ for iwelch = 1:nwelchwin
   % cut out and taper
   tap = feval(taper,nsampwelch);
   tap = tap ./ sqrt(sum(tap.^2));
+  tap = tap(:); % ensure tap is column vector, some window functions return a row instead of column
   currind = welchind(iwelch,:);
   currdat = dat(:,currind(1):currind(2));
   currdat = bsxfun(@times,currdat,tap.');
