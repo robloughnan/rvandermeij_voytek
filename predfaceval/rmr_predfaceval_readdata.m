@@ -1,6 +1,6 @@
 % 
 % This script can be used to read in data from a single subject using FieldTrip.
-% This script depends on the function rmr_irvfacepred_definetrials.m, which should
+% This script depends on the function rmr_predfaceval_definetrials.m, which should
 % be on the MATLAB path. This function provides all the necessary information to
 % segment the raw recordings into trials (with some control over prestim/poststim periods).
 % Syncing/checking the timing provived by the photo diode and MGL is performed 
@@ -35,30 +35,34 @@
 %  2) fear/neut   - fearful (1) or neutral (2) face trial
 %  3) hit/miss    - detected valence correctly (1) or incorrectly (0)
 %  4) RT          - reaction time in seconds
-%  5) faceonset   - onset of face stimulus in seconds
-%  6) respcueons  - onset of response cue in seconds 
+%  5) faceonset   - onset of face stimulus in seconds (from cue onset, t=0)
+%  6) respcueons  - estimated onset of response cue in seconds (from cue onset, t=0)
 %  7) faceindex   - index of shown face as defined in MGL task script
 %  8) cuediodur   - duration of cue on the screen as measured by the photo diode
 %  9) facediodur  - duration of face+mask on the screen as measured by the photo diode
 %
 
 % set the direct path to the EDF file and MGL output .mat file
-datapath = '/XXX/IR32/';
-datafn   = [datapath '2015121616_0022.edf'];
-eventfn  = [datapath '151217_stim04.mat'];
+datapath = '/Users/roemer/Work/Data/Irvine/IR32/';
+datafn   = [datapath '2015121616_0021.edf'];
+eventfn  = [datapath '151217_stim03.mat'];
+datafn   = '/Users/roemer/Downloads/2016020514_0001.besa';
+eventfn  = '/Volumes/voyteklab/common/data1/pred_face_val/IR34/fp_task_05-Feb-2016_3.mat';
+
+
 
 % specificy options necessary obtaining segmentation details
 cfg = []; % start with an empty cfg
-cfg.datafile  = datafn; % 
-cfg.eventfile = eventfn; % the EDF file and MGL .mat file should belong to the same session
-cfg.diodechan = 'POL DC02-Ref'; % this is the label, found in the header of the EDF file, of the channel that contains 
+cfg.datafile  = datafn; % for BESA: *.besa, for EDF, *.edf
+cfg.eventfile = eventfn; % the EDF/BESA file and PTB mat-file should belong to the same session
+cfg.diodechan = 'DC01'; % this is the label, found in the header of the EDF/BESA file, of the channel that contains 
                                 % the signal from the photo diode. This is subject-specific, but is likely always one 
                                 % of the first 4 channels. To obtain this name, one case use the above cfg in 
                                 % ft_databrowser(cfg), selecting the first 4 channels, and observe which one contains 
                                 % stepwise signals.
 cfg.prestim   = 1; % the period, in seconds, before CUE ONSET that is additionally cut out (t=0 will remain CUE ONSET)
 cfg.poststim  = 1; % the period, in seconds, after FACE ONSET that is additionally cut out (FACE ONSET is kept in data.trialinfo, see above)
-trl = rmr_irvfacepred_definetrials(cfg); % obtain the trl matrix, which contains the segmentation details
+trl = rmr_predfaceval_definetrials(cfg); % obtain the trl matrix, which contains the segmentation details
 
 % read in data, using only the trl, and the (EDF) datafile
 cfg = []; % start with an empty cfg
