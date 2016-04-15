@@ -119,7 +119,7 @@ end
 cueind  = find(strcmp({event.type},'cue'));
 faceind = find(strcmp({event.type},'face+mask'));
 cuefaceoffs = (([event(faceind).sample]-[event(cueind).sample]) ./ hdr.Fs) - [event(cueind).duration];
-disp(['found ' num2str(ntrial) ' trials using EDF/BESA diode recording - cue-face+mask offset min = ' num2str(min(cuefaceoffs)) ' max = ' num2str(max(cuefaceoffs)) ', mean(sd) = ' num2str(mean(cuefaceoffs)) '(' num2str(std(cuefaceoffs)) ')'])
+disp(['found ' num2str(ntrial) ' trials using EDF/BESA diode recording - cue-face+mask offset min = ' num2str(min(cuefaceoffs)) 's max = ' num2str(max(cuefaceoffs)) 's, mean(sd) = ' num2str(mean(cuefaceoffs)) 's (' num2str(std(cuefaceoffs)) 's)'])
 
 
 % %%% DIODE DEBUG PLOTTING
@@ -147,6 +147,7 @@ end
 
 % extract information from PTB mat-file to use for checking syncing accuracy
 if isfield(ptb.dat,'frames') % time stamps are present
+  hastimestamps = true;
   % fetch cue onset from timestamps
   cueframes      = dat.frameID==2; % 2 = cue
   ptbcueonset    = dat.frames(diff(cueframes)==1);
@@ -159,6 +160,7 @@ if isfield(ptb.dat,'frames') % time stamps are present
   ptb.respcueons = ptb.respcueons - ptbcueonset; % these should be relative from cue onset (t=0)
   
 else % time stamps are missing... use workaround to get inaccurate representation of timeline
+  hastimestamps = false;
   % reconstruct ptbcueonset, used for syncing
   ifi = 1/60; % assume 60Hz refresh rate
   bs  = ones(1,ntrial);
@@ -196,24 +198,40 @@ reccueonset = [event(1:2:end).sample] ./ hdr.Fs;
 reccueonset = reccueonset - reccueonset(1); % start timeline at 0
 syncerror = ptbcueonset-reccueonset;
 syncerror = syncerror * 1000;
-disp(['experiment-wide recording-ptb timing offset in milisecond: max = ' num2str(max(abs(syncerror))) '  med(sd) = ' num2str(median(syncerror)) ' (' num2str(std(syncerror)) ')'])
-if max(abs(syncerror))>200
-  error('severe error (>200ms) detected in syncing recording and PTB experiment-wide time-axis')
+disp(['experiment-wide recording-ptb timing offset: max = ' num2str(max(abs(syncerror))) 'ms  med(sd) = ' num2str(median(syncerror)) 'ms (' num2str(std(syncerror)) 'ms)'])
+if hastimestamps
+  if max(abs(syncerror))>200 
+    error('severe error (>200ms) detected in syncing recording and PTB experiment-wide time-axis')
+  end
+else
+  if     max(abs(syncerror))>200 && max(abs(syncerror))<2000
+    warning('error (>200ms) detected in syncing recording and PTB experiment-wide time-axis (note, no time-stamps were found)')
+  elseif max(abs(syncerror))>2000
+    error('severe error (>2000ms) detected in syncing recording and PTB experiment-wide time-axis (note, no time-stamps were found)')
+  end
 end
 % check 2 - syncing error between cue and face onsets
 ptbcfonsetdiff = ptbfaceonset - ptbcueonset;
 reccfonsetdiff = ([event(2:2:end).sample]-[event(1:2:end).sample]) ./ hdr.Fs;
 syncerror = ptbcfonsetdiff-reccfonsetdiff;
 syncerror = syncerror*1000;
-disp(['trial-specific recording-ptb timing offset of cue-face delay in milisecond: max = ' num2str(max(abs(syncerror))) '  med(sd) = ' num2str(median(syncerror)) ' (' num2str(std(syncerror)) ')'])
-if max(abs(syncerror))>20
-  error('error (>20ms) detected in syncing recording and PTB trial-by-trial time-axis') % 1 refresh tick is 1/60 = 16.7ms
+disp(['trial-specific recording-ptb timing offset of cue-face delay: max = ' num2str(max(abs(syncerror))) 'ms  med(sd) = ' num2str(median(syncerror)) 'ms (' num2str(std(syncerror)) 'ms)'])
+if hastimestamps
+  if max(abs(syncerror))>20
+    error('severe error (>20ms) detected in syncing recording and PTB trial-by-trial time-axis') % 1 refresh tick is 1/60 = 16.7ms
+  end
+else
+  if      max(abs(syncerror))>20 && max(abs(syncerror))<100
+    warning('error (>20ms) detected in syncing recording and PTB trial-by-trial time-axis (note, no time-stamps were found)') % 1 refresh tick is 1/60 = 16.7ms
+  elseif  max(abs(syncerror))>100
+    error('severe error (>100ms) detected in syncing recording and PTB trial-by-trial time-axis (note, no time-stamps were found)') % 1 refresh tick is 1/60 = 16.7ms
+  end
 end
 %%%%%%%%%%%
 
 
 % syncing is accurate enough, proceed with building trial definition
-disp(['syncing deviations are within tolerance, creating trl matrix containing ' num2str(ntrial) ' trials with mean(SD) cue->face onset differences of ' num2str(mean(reccfonsetdiff)) 's (' num2str(std(reccfonsetdiff)) ')'])
+disp(['syncing deviations are within tolerance, creating trl matrix containing ' num2str(ntrial) ' trials with mean(SD) cue->face onset differences of ' num2str(mean(reccfonsetdiff)) 's (' num2str(std(reccfonsetdiff)) 's)'])
 
 % see documentation above for individual columns
 trl = [];
