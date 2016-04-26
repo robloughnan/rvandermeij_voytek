@@ -62,6 +62,7 @@ cfg.diodechan = 'DC01'; % this is the label, found in the header of the EDF/BESA
                                 % stepwise signals.
 cfg.prestim   = 1; % the period, in seconds, before CUE ONSET that is additionally cut out (t=0 will remain CUE ONSET)
 cfg.poststim  = 1; % the period, in seconds, after FACE ONSET that is additionally cut out (FACE ONSET is kept in data.trialinfo, see above)
+cfg.debugflg  = true; % create a figure showing diode event detection output
 trl = rmr_predfaceval_definetrials(cfg); % obtain the trl matrix, which contains the segmentation details
 
 % read in data, using only the trl, and the (EDF) datafile
