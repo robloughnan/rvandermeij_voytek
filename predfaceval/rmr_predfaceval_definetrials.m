@@ -6,7 +6,7 @@ function trl = rmr_predfaceval_definetrials(cfg)
 % The trl should be used as input for ft_preprocessing(cfg) by passing it as cfg.trl.
 %
 % For all trials, t=0 is the onset of the CUE. The prestimulus period (tied to CUE) and
-% poststimulus period (tied to FACE) can be defined using the options below.
+% poststimulus period (tied to FACE) can be defined using the options below. 
 %
 % The trl matrix describes a trial per row, where each column describes:
 %  1) begsample   - beginning sample of trial
@@ -20,7 +20,7 @@ function trl = rmr_predfaceval_definetrials(cfg)
 %  9) respcueons  - estimated onset of response cue in seconds (from cue onset, t=0)
 % 10) faceindex   - index of shown face as defined in PTB task script
 % 11) cuediodur   - duration of cue on the screen as measured by the photo diode
-% 12) facediodur  - duration of face+mask on the screen as measured by the photo diode
+% 12) facediodur  - duration of face+isi on the screen as measured by the photo diode
 %
 % When using the trl as input for ft_preprocessing, columns 1-3 will be present in the
 % output as data.sampleinfo. Columns 4-end will be present in data.trialinfo.
@@ -38,7 +38,7 @@ function trl = rmr_predfaceval_definetrials(cfg)
 %    - each cue onset (and therefore the start of the trial and t=0)
 %    - each face onset (and therefore the end of the trial)
 %    - each cue duration (additional row in the trl, see below)
-%    - each face+mask duration (additional row in the trl, see below)
+%    - each face+isi duration (additional row in the trl, see below)
 % From the PTB mat-file output are taken:
 %    - all trial labels (valence, predictive or not, etc)
 %    - response cue onset
@@ -47,6 +47,9 @@ function trl = rmr_predfaceval_definetrials(cfg)
 % To check whether the timings of the EDF/BESA and PTB are synced correctly, two deviations are checked:
 %   1) deviations of experiment timeline after EDF/BESA and PTB are synced using cue of first trial (for tolerance see below)
 %   2) per trial deviations of cue-face period (for tolerance see below)
+%
+% Trials on which the cue or face were on the screen for more than the specified frames are deleted.
+% This is 200ms for the cue, and 50ms for the face+isi
 %
 %
 
@@ -81,38 +84,28 @@ hdr = ft_read_header(cfg.datafile);
 % read the events from the data
 chanindx    = find(ismember(hdr.label, ft_channelselection(cfg.diodechan, hdr.label)));
 % readin event channel to use later
-diosig = ft_read_data(cfg.datafile);
-diosig = diosig(chanindx,:); % bypass reading error I can't fix right now
+diodesig = ft_read_data(cfg.datafile);
+diodesig = diodesig(chanindx,:); % bypass reading error I can't fix right now
 % detect up and down going flanks
 event = ft_read_event(cfg.datafile, 'chanindx', chanindx, 'detectflank', 'both', 'threshold', '(3/2)*nanmedian');
-% % detect upgoing flank
-% eventup         = ft_read_event(cfg.datafile, 'chanindx', chanindx, 'detectflank', 'up', 'threshold', '(3/2)*nanmedian');
-% for ievent = 1:numel(eventup)
-%   eventup(ievent).type = [eventup(ievent).type '_up'];
-% end
-% % detect downgoing flank
-% eventdown       = ft_read_event(cfg.datafile, 'chanindx', chanindx, 'detectflank', 'down', 'threshold', '(3/2)*nanmedian'); % 0.9*max is okay, because the diode is saturated everytime
-% for ievent = 1:numel(eventdown)
-%   eventdown(ievent).type = [eventdown(ievent).type '_down'];
-% end
-% % merge events and sort
-% event = [eventup, eventdown];
-% [dum sortind] = sort([event.sample]);
-% event = event(sortind);
+% estimate DAC noise/minimal step in diode signal, to use for correction
+diodediff = sort(abs(diff(diodesig)),'ascend');
+diodediff(diodediff==0) = [];
+diodestep = mean(diodediff(1:round(hdr.Fs*0.100))); % take 100ms of the minimal diffs, should be enough
 % prune events, which is necessary due to DAC noise (the diode signal can flip one DAC value back and forth, which can cause faulty event detection)
 falseeventind = [];
 for ievent = 1:numel(event)
   switch event(ievent).type    
     case [cfg.diodechan '_up']
       % when up, 75% of the next non-constant 20 samples should agree
-      futsmp = diosig(event(ievent).sample+1:(event(ievent).sample+20));
+      futsmp = diodesig(event(ievent).sample+1:(event(ievent).sample+20));
       nconst = sum(diff(futsmp)==0);
       if sum(sign(diff(futsmp)) == 1) < ((20-nconst)*.75)
         falseeventind = [falseeventind ievent];
       end
     case [cfg.diodechan '_down']
       % when down, 75% of the previous non-constant 50 samples should agree (downgoing flank flatt
-      futsmp = diosig((event(ievent).sample-50):(event(ievent).sample-1));
+      futsmp = diodesig((event(ievent).sample-50):(event(ievent).sample-1));
       nconst = sum(diff(futsmp)==0);
       if sum(sign(diff(futsmp)) == -1) <((50-nconst)*.75)
         falseeventind = [falseeventind ievent];
@@ -135,23 +128,24 @@ disp([num2str(sum([numel(falseeventind) sum(upindrep) sum(downindrep)])) ' singl
 
 % now that we can assume only real up/down events are found, increase their accuracy
 for ievent = 1:numel(event)
-  switch event(ievent).type    
+  switch event(ievent).type
     case [cfg.diodechan '_up']
       % search backward in time with a sliding window until the start of the up-flank has been found
       % (diode signal rise speed increases with time)
       found = 0;
       lastsmp = event(ievent).sample;
       while ~found
-        smpwin = (lastsmp-39):(lastsmp);
-        seg1diff = abs(mean(diff(diosig(smpwin(1:10)))));
-        seg2diff = abs(mean(diff(diosig(smpwin(11:20)))));
-        if seg2diff>(seg1diff*2) % if rate of change of closest half of window is at least as big as twice that of furthest half of window, continue
+        nsmp = 40;
+        smpwin = (lastsmp-nsmp-1):(lastsmp);
+        winmean = mean(diodesig(smpwin));
+        if (winmean-diodesig(lastsmp))<(-diodestep*2.5) % difference between window and last sample should be at least 2 steps (2.5 to account for small variotions in stepsize)
           % continue search
           lastsmp = lastsmp - 1;
         else
           % end found
+          lastsmp = lastsmp + 1; % previous was correct one
           found = true;
-          event(ievent).sample = lastsmp + 2; % add safety sample
+          event(ievent).sample = lastsmp;
         end
       end
       
@@ -161,16 +155,17 @@ for ievent = 1:numel(event)
       found = 0;
       lastsmp = event(ievent).sample;
       while ~found
-        smpwin = [(lastsmp-19):(lastsmp) (lastsmp+1):(lastsmp+20);];
-        seg1diff = abs(mean(diff(diosig(smpwin(1:20)))));
-        seg2diff = abs(mean(diff(diosig(smpwin(21:40)))));
-        if seg1diff>(seg2diff/4) % if rate of change of furthest half of window is bigger than half that of closest half of window, continue
+        nsmp = 40;
+        smpwin = (lastsmp-nsmp-1):(lastsmp);
+        winmean = mean(diodesig(smpwin));
+        if (winmean-diodesig(lastsmp))>(diodestep*2.5) % difference between window and last sample should be at least 2 steps (2.5 to account for small variotions in stepsize)
           % continue search
           lastsmp = lastsmp - 1;
         else
           % end found
+          lastsmp = lastsmp + 1; % previous was correct one
           found = true;
-          event(ievent).sample = lastsmp + 2; % add safety sample
+          event(ievent).sample = lastsmp; 
         end
       end
       
@@ -189,10 +184,10 @@ for ievent = 1:numel(preparseevent)
       event(count).sample   = begsample;
       event(count).duration = (endsample-begsample+1)./hdr.Fs;
       % determine event type using broad margins
-      if (event(count).duration > (0.2-.025) && event(count).duration <  (0.2+.025)) % defined length is 200ms with errors of +/- 1/60 (refresh ticks)
+      if (event(count).duration > (0.2-(2.5/60)) && event(count).duration <  (0.2+(2.5/60))) % defined length is 200ms with errors of +/- 2.5/60 (2 refresh ticks)
         event(count).type = 'cue';
-      elseif (event(count).duration > (0.05-0.025) && event(count).duration < (0.05+0.025))
-        event(count).type = 'face+mask';
+      elseif (event(count).duration > (0.05-(2.5/60)) && event(count).duration < (0.05+(2.5/60)))
+        event(count).type = 'face+isi';
       else
         event(count).type = 'other';
       end
@@ -207,17 +202,17 @@ precleanevent = event;
 % first remove other events
 othereventind = find(strcmp({event.type},'other'));
 event(othereventind) = [];
-disp([num2str(numel(othereventind)) ' events were not cue/face+mask and removed'])
-% then, only keep events where cue is followed by a face+mask
+disp([num2str(numel(othereventind)) ' events were not cue/face+isi and removed'])
+% then, only keep events where cue is followed by a face+isi
 keepind = [];
 for ievent = 1:(numel(event)-rem(numel(event),2))
   if strcmp(event(ievent).type,'cue')
-    if strcmp(event(ievent+1).type,'face+mask')
+    if strcmp(event(ievent+1).type,'face+isi')
       keepind = [keepind ievent ievent+1];
     end
   end
 end
-disp([num2str(numel(event)-numel(keepind)) ' cue/face+mask events occured in isolation and were removed'])
+disp([num2str(numel(event)-numel(keepind)) ' cue/face+isi events occured in isolation and were removed'])
 event  = event(keepind);
 ntrial = numel(event)/2;
 
@@ -228,14 +223,14 @@ if debugflg
   figure('numbertitle','off','name',[datafnprts{end} ' and ' eventfnprts{end}])
   subplot(2,1,1)
   hold on
-  plot((1:numel(diosig))./hdr.Fs,diosig)
-  plot([preparseevent.sample]./hdr.Fs,diosig([preparseevent.sample]),'sc','markerfacecolor','cyan')
-  plot([event.sample]./hdr.Fs,diosig([event.sample]),'marker','v','color','r')
+  plot((1:numel(diodesig))./hdr.Fs,diodesig)
+  plot([preparseevent.sample]./hdr.Fs,diodesig([preparseevent.sample]),'sc','markerfacecolor','cyan')
+  plot([event.sample]./hdr.Fs,diodesig([event.sample]),'marker','v','color','r')
   if isempty(othereventind) % happens often
-    legend('diode signal','detected up/down events','final cue/face+mask events')
+    legend('diode signal','detected up/down events','final cue/face+isi events')
   else
-    plot([precleanevent(othereventind).sample]./hdr.Fs,diosig([precleanevent(othereventind).sample]),'vgr')
-    legend({'diode signal','detected up/down events','final cue/face+mask events','removed cue/face+mask events'})
+    plot([precleanevent(othereventind).sample]./hdr.Fs,diodesig([precleanevent(othereventind).sample]),'vgr')
+    legend({'diode signal','detected up/down events','final cue/face+isi events','removed cue/face+isi events'})
   end
   xlabel('time(s)')
   ylabel('diode signal strength')
@@ -247,9 +242,14 @@ end
 % act upon found events 
 if ~isempty(event)
   cueind  = find(strcmp({event.type},'cue'));
-  faceind = find(strcmp({event.type},'face+mask'));
+  faceind = find(strcmp({event.type},'face+isi'));
   cuefaceoffs = (([event(faceind).sample]-[event(cueind).sample]) ./ hdr.Fs) - [event(cueind).duration];
-  disp(['found ' num2str(ntrial) ' trials using EDF/BESA diode recording - cue-face+mask offset min = ' num2str(min(cuefaceoffs)) 's max = ' num2str(max(cuefaceoffs)) 's, mean(sd) = ' num2str(mean(cuefaceoffs)) 's (' num2str(std(cuefaceoffs)) 's)'])
+  cuedur  = [event(cueind).duration];
+  facedur = [event(faceind).duration];
+  disp(['found ' num2str(ntrial) ' trials using EDF/BESA diode recording'])
+  disp(['EDF/BESA diode        cue duration mean(sd) = ' num2str(mean(cuedur))      's (' num2str(std(cuedur))      's)  min = ' num2str(min(cuedur))      's max = ' num2str(max(cuedur)) 's'])
+  disp(['EDF/BESA diode   face+isi duration mean(sd) = ' num2str(mean(facedur))     's (' num2str(std(facedur))     's)  min = ' num2str(min(facedur))     's max = ' num2str(max(facedur)) 's'])
+  disp(['EDF/BESA diode cue-face+isi offset mean(sd) = ' num2str(mean(cuefaceoffs)) 's (' num2str(std(cuefaceoffs)) 's)  min = ' num2str(min(cuefaceoffs)) 's max = ' num2str(max(cuefaceoffs)) 's'])
 else
   error('no trials were found in EDF/BESA diode recording')
 end
@@ -316,14 +316,14 @@ end
 
 
 %%%%%%%%%%%
-%%% Perform syncing check
-% check 1 - calc syncing error after aligning to cue of first trial
+%%% Perform syncing and timing check
+% syncing check 1 - calc syncing error after aligning to cue of first trial
 ptbcueonset = ptbcueonset - ptbcueonset(1); % start timeline at 0
 reccueonset = [event(1:2:end).sample] ./ hdr.Fs;
 reccueonset = reccueonset - reccueonset(1); % start timeline at 0
 cosyncerror = ptbcueonset-reccueonset;
 cosyncerror = cosyncerror * 1000;
-% check 2 - calc syncing error between cue and face onsets
+% syncing check 2 - calc syncing error between cue and face onsets
 ptbcfonsetdiff = ptbfaceonset - ptbcueonset;
 reccueonset    = [event(1:2:end).sample] ./ hdr.Fs;
 recfaceonset   = [event(2:2:end).sample] ./ hdr.Fs;
@@ -333,37 +333,48 @@ reccfonsetdiff = ([event(2:2:end).sample]-[event(1:2:end).sample]) ./ hdr.Fs;
 cfodsyncerror = ptbcfonsetdiff-reccfonsetdiff;
 cfodsyncerror = cfodsyncerror*1000;
 
+% timing check: remove trials where cue/face+isi durations were wrong 
+cuedur  = [event(1:2:end).duration];
+facedur = [event(2:2:end).duration];
+% use 5ms, to capture not only frame errors, but also serious diode errors (not, at 5khz, 5ms is an error of 25 samples)
+remind = (cuedur < (.200-.005)) & (cuedur > (.200+.005)) & (facedur < (.050-.005)) & (facedur > (.050+.005));
+% instead of removing the trail from all possible fields, remove them from the selection
+trialind = 1:60;
+trialind(remind) = [];
+ntrial   = numel(trialind);
+
 %%%%%
 % BESA/EDF - PTB syncing debug plotting
 if debugflg
   subplot(2,1,2)
   hold on
-  lincol = lines(ntrial);
-  % plot diode cue/face+mask
+  lincol = lines(60); 
+  % plot diode cue/face+isi
+  lincol(remind,:) = repmat([.8 .8 .8],[sum(remind) 1]); % grey out removed trials
   reccfpairs = [reccueonset; recfaceonset];
-  for itrial = 1:ntrial
+  for itrial = 1:60
     plot(reccfpairs(:,itrial),[1.05 1.05],'marker','^','color',lincol(itrial,:))
   end
-  % plot ptb cue/face+mask
+  % plot ptb cue/face+isi
   ptbcfpairs = [ptbcueonset; ptbfaceonset];
-  for itrial = 1:ntrial
+  for itrial = 1:60
     plot(ptbcfpairs(:,itrial),[1 1],'marker','v','color',lincol(itrial,:))
   end
   % plot connecting lines
-  for itrial = 1:ntrial
+  for itrial = 1:60
     plot([reccfpairs(1,itrial) ptbcfpairs(1,itrial)],[1.05 1],'color',lincol(itrial,:))
     plot([reccfpairs(2,itrial) ptbcfpairs(2,itrial)],[1.05 1],'color',lincol(itrial,:))
   end
   set(gca,'ylim',[0.8 1.2],'ytick',[1 1.05],'yticklabel',{'PTB','BESA/EDF'},'xlim',[-2 max([reccfpairs(:); ptbcfpairs(:)])+2])
   xlabel('time(s)')
-  title('cue/face+mask timing per trial of BESA/EDF vs PTB')
+  title('cue/face+isi timing per trial of BESA/EDF vs PTB (grey = removed due to timing errors)')
   legend('trial 1', 'trial 2', 'trial 3', 'etc')
   drawnow % flush
 end
 %%%%%
 
 % act upon calculated syncing errors
-% check 1 - syncing error after aligning to cue of first trial
+% syncing check 1 - syncing error after aligning to cue of first trial
 disp(['experiment-wide recording-ptb timing offset: max = ' num2str(max(abs(cosyncerror))) 'ms  med(sd) = ' num2str(median(cosyncerror)) 'ms (' num2str(std(cosyncerror)) 'ms)'])
 if hastimestamps
   if max(abs(cosyncerror))>200 
@@ -376,7 +387,7 @@ else
     error('severe error (>2000ms) detected in syncing recording and PTB experiment-wide time-axis (note, no time-stamps were found)')
   end
 end
-% check 2 - syncing error between cue and face onsets
+% syncing check 2 - syncing error between cue and face onsets
 disp(['trial-specific recording-ptb timing offset of cue-face delay: max = ' num2str(max(abs(cfodsyncerror))) 'ms  med(sd) = ' num2str(median(cfodsyncerror)) 'ms (' num2str(std(cfodsyncerror)) 'ms)'])
 if hastimestamps
   if max(abs(cfodsyncerror))>20
@@ -389,17 +400,24 @@ else
     error('severe error (>100ms) detected in syncing recording and PTB trial-by-trial time-axis (note, no time-stamps were found)') % 1 refresh tick is 1/60 = 16.7ms
   end
 end
+% sync was succesful
+disp('syncing deviations are within tolerance') 
+% timing check 
+disp([num2str(ntrial-60) ' trials had cue/face+isi duration timing errors that exceeded 5ms and were removed'])
+if (ntrial-60)>5
+  warning('more than 5 trials were removed due cue/face+isi duration timing errors that exceeded 5ms')
+end
 %%%%%%%%%%%
 
 
 
 % syncing is accurate enough, proceed with building trial definition
-disp(['syncing deviations are within tolerance, creating trl matrix containing ' num2str(ntrial) ' trials with mean(SD) cue->face onset differences of ' num2str(mean(reccfonsetdiff)) 's (' num2str(std(reccfonsetdiff)) 's)'])
+disp(['creating trl matrix containing ' num2str(ntrial) ' trials with mean(SD) cue->face onset differences of ' num2str(mean(reccfonsetdiff)) 's (' num2str(std(reccfonsetdiff)) 's)'])
 
 % see documentation above for individual columns
 trl = [];
-eventind = 1:2:(ntrial*2); % event is serialized structure of 2 events per trial
-for itrial = 1:ntrial
+eventind = 1:2:(60*2); % event is serialized structure of 2 events per trial
+for itrial = trialind
   curreventind = eventind(itrial);
   
   % get trl samples
@@ -420,7 +438,7 @@ for itrial = 1:ntrial
   % respcueons could be on a timepoint that doesn't match a sample, find closest one
   respcueons = round(respcueons .* hdr.Fs) ./ hdr.Fs;
   
-  % grab duration of cue and face+mask
+  % grab duration of cue and face+isi
   cuediodur  = event(curreventind).duration;
   facediodur = event(curreventind+1).duration;
   
