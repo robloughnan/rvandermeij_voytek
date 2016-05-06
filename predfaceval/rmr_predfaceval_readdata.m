@@ -3,7 +3,7 @@
 % This script depends on the function rmr_predfaceval_definetrials.m, which should
 % be on the MATLAB path. This function provides all the necessary information to
 % segment the raw recordings into trials (with some control over prestim/poststim periods).
-% Syncing/checking the timing provived by the photo diode and MGL is performed 
+% Syncing/checking the timing provived by the EDF/BESA photo diode and PTB matfile is performed 
 % in this function as well, see it for further details.
 %  
 % For all trials that are extracted, t=0 is the onset of the CUE, and determines the start of the trial.
@@ -21,8 +21,8 @@
 %
 % The MATLAB-structure 'data' produced below is a FieldTrip style data-structure. 
 % It will contain, among others, the following important fields:
-%            hdr: [1x1 struct]   - the original header information from the EDF file
-%          label: {143x1 cell}   - Nchanx1 cell-array, containing the channel names (from the EDF file)
+%            hdr: [1x1 struct]   - the original header information from the BESA/EDF file
+%          label: {143x1 cell}   - Nchanx1 cell-array, containing the channel names (from the BESA/EDF file)
 %           time: {1x60 cell}    - 1xNtrial cell-array, containing the time axis of each trial, to be used together with data.trial
 %          trial: {1x60 cell}    - 1xNtrial cell-array, containing the data of each trial, as a NchanxNsamples matrix
 %        fsample: 5000           - sampling rate of the data in Hz
@@ -42,13 +42,10 @@
 %  9) facediodur  - duration of face+mask on the screen as measured by the photo diode
 %
 
-% set the direct path to the EDF file and MGL output .mat file
-datapath = '/Users/roemer/Work/Data/Irvine/IR32/';
-datafn   = [datapath '2015121616_0021.edf'];
-eventfn  = [datapath '151217_stim03.mat'];
-datafn   = '/Users/roemer/Downloads/2016020514_0001.besa';
-eventfn  = '/Volumes/voyteklab/common/data1/pred_face_val/IR34/fp_task_05-Feb-2016_3.mat';
-
+% set the direct path to the BESA/EDF file and PTB .mat file
+datapath = '/projects/ps-voyteklab/common/data1/pred_face_val/IR35/';
+datafn   = [datapath '2016021912_0003.besa'];
+eventfn  = [datapath 'fp_task_19-Feb-2016_3.mat'];
 
 
 % specificy options necessary obtaining segmentation details
@@ -65,7 +62,7 @@ cfg.poststim  = 1; % the period, in seconds, after FACE ONSET that is additional
 cfg.debugflg  = true; % create a figure showing diode event detection output
 trl = rmr_predfaceval_definetrials(cfg); % obtain the trl matrix, which contains the segmentation details
 
-% read in data, using only the trl, and the (EDF) datafile
+% read in data, using only the trl, and the BESA/EDF datafile
 cfg = []; % start with an empty cfg
 cfg.datafile  = datafn; % 
 cfg.trl       = trl;
