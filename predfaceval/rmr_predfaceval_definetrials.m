@@ -1,9 +1,11 @@
-function trl = rmr_predfaceval_definetrials(cfg)
+function [trl,event] = rmr_predfaceval_definetrials(cfg)
 
 % The function is used to segment the raw recordings using FieldTrip.
 % The output of this function is a trl matrix, which describes the times of each trial in samples,
 % and contains additional information for classifying trials (condition, hit/miss, rt, etc).
 % The trl should be used as input for ft_preprocessing(cfg) by passing it as cfg.trl.
+% The second output argument, event, is a structure containing most event information, with
+% events coming from the diode.
 %
 % For all trials, t=0 is the onset of the CUE. The prestimulus period (tied to CUE) and
 % poststimulus period (tied to FACE) can be defined using the options below. 
@@ -446,13 +448,33 @@ for itrial = trialind
   trl(end+1,:) = [begsample endsample offset predunpred fearneut hitmiss rt faceonset respcueons faceindex cuediodur facediodur];
 end
 
-
-
-
-
-
-
-
+% modify event structure for output
+for ievent = 1:numel(event)
+  % add whether trials were removed due to timing errors
+  if any(ievent == (trialind*2-1)) || any(ievent == (trialind*2))
+    event(ievent).timingerror = false;
+  else
+    event(ievent).timingerror = true;
+  end
+  
+  % add trial information from PTB
+  if mod(ievent,2)==0% even
+    currtrial = ievent/2;
+  else % odd
+    currtrial = ceil(ievent/2);
+  end
+  event(ievent).predunpred = ptb.dat.cueType(currtrial);      % 1 = predictive, 2 = unpredictive
+  event(ievent).fearneut   = ptb.dat.faceValence(currtrial);  % 1 = fear, 2 = neutral
+  event(ievent).respval    = ptb.dat.percValence(currtrial);  % 1 = fear, 2 = neutral
+  event(ievent).hitmiss    = event(ievent).fearneut == event(ievent).respval;  % 1 = hit, 0 = miss
+  event(ievent).rt         = ptb.dat.rt(currtrial);           % in seconds
+  event(ievent).faceindex  = ptb.dat.faceIdentity(currtrial); 
+end
+% set event.type to value and set type to duide per FT convention
+for ievent = 1:numel(event)
+  event(ievent).value  = event(ievent).type;
+  event(ievent).type  = 'diode';
+end
 
 
 
