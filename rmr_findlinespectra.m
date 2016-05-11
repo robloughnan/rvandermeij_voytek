@@ -90,8 +90,9 @@ if size(dat,2)<size(dat,1)
   error('dat has more channels than samples')
 end
 
-% save original data for later use
-origdat = dat;
+% get pow of original data to be used in output
+[origpow, freqorig]     = getpow(dat,fsample,searchrange,param.welchwin,param.taper);
+[origpow50ms, freg50ms] = getpow(dat,fsample,searchrange,0.050,param.taper);
 
 
 %%%%%%%%%%%%%%%%%%%%%
@@ -103,11 +104,13 @@ pspecpeaks = [];
 pspecbandw = [];
 pspecprpow = [];
 itouter = 0;
+filtdat = dat; % this will from now on be filtered data
+clear dat
 while peaksremaining
   itouter = itouter + 1;
   
   % get pow
-  [pow, freq] = getpow(dat,fsample,searchrange,param.welchwin,param.taper);
+  [pow, freq] = getpow(filtdat,fsample,searchrange,param.welchwin,param.taper);
   % process pow
   [procpow,zparam] = processpow(pow,freq,[],peaks,bandwidth);
   
@@ -135,12 +138,13 @@ while peaksremaining
   while ~all(peakgone)
     itinner = itinner + 1;
     
-    % filter data
-    filtdat = dat;
+    % filter data, but do it per channel to save memory
     for ipeak = 1:numel(peaks)
       % apply a bandstop filter
       disp(['applying filter for peak at ' num2str(peaks(ipeak)) 'Hz +/- ' num2str(bandwidth(ipeak)) 'Hz'])
-      filtdat = ft_preproc_bandstopfilter(filtdat, fsample, [peaks(ipeak)-bandwidth(ipeak) peaks(ipeak)+bandwidth(ipeak)], param.filtord, param.filttype, param.filtdir);
+      for ichan = 1:size(filtdat,1)
+        filtdat(ichan,:) = ft_preproc_bandstopfilter(filtdat(ichan,:), fsample, [peaks(ipeak)-bandwidth(ipeak) peaks(ipeak)+bandwidth(ipeak)], param.filtord, param.filttype, param.filtdir);
+      end
     end
     
     % get pow and process it, using same zval-ling as used initially
@@ -172,8 +176,6 @@ while peaksremaining
   % save pass-specific peaks and bandwidth
   pspecpeaks{itouter} = peaks;
   pspecbandw{itouter} = bandwidth;
-  % set filtered dat to dat for next round
-  dat = filtdat;
   
   % stop if it goes on too long
   if itouter == param.maxouterit
@@ -198,12 +200,9 @@ for ipeak = 1:numel(peaks)
 end
 edgeartlen = max(edgeartlen);
 
-
-% produce origpow for output structure, and create some additional pows for plotting
-[origpow, freqorig]     = getpow(origdat,fsample,searchrange,param.welchwin,param.taper);
-[origpow50ms, freg50ms] = getpow(origdat,fsample,searchrange,0.050,param.taper);
-[filtpow, freqorig]     = getpow(dat,fsample,searchrange,param.welchwin,param.taper);
-[filtpow50ms, freg50ms] = getpow(dat,fsample,searchrange,0.050,param.taper);
+% produce filtpow for output structure
+[filtpow, freqorig]     = getpow(filtdat,fsample,searchrange,param.welchwin,param.taper);
+[filtpow50ms, freg50ms] = getpow(filtdat,fsample,searchrange,0.050,param.taper);
 
 
 % create output structure
