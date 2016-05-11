@@ -269,6 +269,11 @@ disp(['found ' num2str(ptbntrial) ' trials in PTB output'])
 if ntrial~=ptbntrial
   error('different number of trials detected in EDF/BESA file and PTB output')
 end
+% change some of the coding
+ptb.dat.cueType = ~ptb.dat.cueType + 1;          % is  1 = predictive, 0 = nonpredictive, change to 1 = predictive, 2 = unpredictive
+ptb.dat.faceValence = ~ptb.dat.faceValence + 1;  % is  1 = fear, 0 = neutral,             change to 1 = fear, 2 = neutral
+ptb.dat.percValence = ~ptb.dat.percValence +1;   % is  1 = fear, 0 = neural,              change to 1 = fear, 2 = neutral
+
 
 % extract information from PTB mat-file to use for checking syncing accuracy
 if isfield(ptb.dat,'frames') % time stamps are present
@@ -433,7 +438,7 @@ for itrial = trialind
   hitmiss    = fearneut == respval;          % 1 = hit, 0 = miss
   rt         = ptb.dat.rt(itrial);           % in seconds
   faceindex  = ptb.dat.faceIdentity(itrial); 
-  
+
   % get various latencies
   faceonset  = (endsample-(begsample-offset)+1) ./ hdr.Fs; % t=0 is sample=1(-offset)
   respcueons = ptb.respcueons(itrial);
