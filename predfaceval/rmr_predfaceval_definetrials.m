@@ -440,7 +440,7 @@ for itrial = trialind
   faceindex  = ptb.dat.faceIdentity(itrial); 
 
   % get various latencies
-  faceonset  = (endsample-(begsample-offset)+1) ./ hdr.Fs; % t=0 is sample=1(-offset)
+  faceonset  = ((event(curreventind+1).sample)-(event(curreventind).sample)+1) ./ hdr.Fs; % t=0 is sample=1(-offset)
   respcueons = ptb.respcueons(itrial);
   % respcueons could be on a timepoint that doesn't match a sample, find closest one
   respcueons = round(respcueons .* hdr.Fs) ./ hdr.Fs;
