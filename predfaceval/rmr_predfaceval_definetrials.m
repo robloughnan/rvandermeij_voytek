@@ -341,10 +341,11 @@ cfodsyncerror = ptbcfonsetdiff-reccfonsetdiff;
 cfodsyncerror = cfodsyncerror*1000;
 
 % timing check: remove trials where cue/face+isi durations were wrong 
-cuedur  = [event(1:2:end).duration];
-facedur = [event(2:2:end).duration];
+cuedur     = [event(1:2:end).duration];
+facedur    = [event(2:2:end).duration];
+cuefaceint = ([event(2:2:end).sample]-[event(1:2:end).sample]+1) ./ hdr.Fs - cuedur;
 % use 5ms, to capture not only frame errors, but also serious diode errors (not, at 5khz, 5ms is an error of 25 samples)
-remind = (cuedur < (.200-.005)) & (cuedur > (.200+.005)) & (facedur < (.050-.005)) & (facedur > (.050+.005));
+remind = (cuedur < (.200-.005)) | (cuedur > (.200+.005)) | (facedur < (.050-.005)) | (facedur > (.050+.005)) | (abs(cuefaceint-ptb.dat.cueTargetInterval)>0.005); 
 % instead of removing the trail from all possible fields, remove them from the selection
 trialind = 1:60;
 trialind(remind) = [];
