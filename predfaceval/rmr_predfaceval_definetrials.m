@@ -411,8 +411,8 @@ end
 % sync was succesful
 disp('syncing deviations are within tolerance') 
 % timing check 
-disp([num2str(ntrial-60) ' trials had cue/face+isi duration timing errors that exceeded 5ms and were removed'])
-if (ntrial-60)>5
+disp([num2str(60-ntrial) ' trials had cue/face+isi duration timing errors that exceeded 5ms and were removed'])
+if (60-ntrial)>5
   warning('more than 5 trials were removed due cue/face+isi duration timing errors that exceeded 5ms')
 end
 %%%%%%%%%%%
