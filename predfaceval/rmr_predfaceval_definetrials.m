@@ -279,14 +279,14 @@ ptb.dat.percValence = ~ptb.dat.percValence +1;   % is  1 = fear, 0 = neural,    
 if isfield(ptb.dat,'frames') % time stamps are present
   hastimestamps = true;
   % fetch cue onset from timestamps
-  cueframes      = dat.frameID==2; % 2 = cue
-  ptbcueonset    = dat.frames(diff(cueframes)==1);
+  cueframes      = ptb.dat.frameID==2; % 2 = cue
+  ptbcueonset    = ptb.dat.frames(diff(cueframes)==1);
   % fetch face onset from timestamps
-  faceframes     = dat.frameID==4; % 4 = target
-  ptbfaceonset   = dat.frames(diff(faceframes)==1);
+  faceframes     = ptb.dat.frameID==4; % 4 = target
+  ptbfaceonset   = ptb.dat.frames(diff(faceframes)==1);
   % fetch response cue onset from timestamps
-  faceframes     = dat.frameID==10; % 10 = respone screen
-  ptb.respcueons = dat.frames(diff(faceframes)==1);
+  faceframes     = ptb.dat.frameID==10; % 10 = respone screen
+  ptb.respcueons = ptb.dat.frames(diff(faceframes)==1);
   ptb.respcueons = ptb.respcueons - ptbcueonset; % these should be relative from cue onset (t=0)
   
 else % time stamps are missing... use workaround to get inaccurate representation of timeline
@@ -324,18 +324,17 @@ end
 
 %%%%%%%%%%%
 %%% Perform syncing and timing check
+ptbfaceonset = ptbfaceonset - ptbcueonset(1); % start timeline at 0
+ptbcueonset  = ptbcueonset - ptbcueonset(1); % start timeline at 0
+reccueonset  = [event(1:2:end).sample] ./ hdr.Fs;
+recfaceonset = [event(2:2:end).sample] ./ hdr.Fs;
+recfaceonset = recfaceonset - reccueonset(1); % start timeline at 0
+reccueonset  = reccueonset - reccueonset(1); % start timeline at 0
 % syncing check 1 - calc syncing error after aligning to cue of first trial
-ptbcueonset = ptbcueonset - ptbcueonset(1); % start timeline at 0
-reccueonset = [event(1:2:end).sample] ./ hdr.Fs;
-reccueonset = reccueonset - reccueonset(1); % start timeline at 0
 cosyncerror = ptbcueonset-reccueonset;
 cosyncerror = cosyncerror * 1000;
 % syncing check 2 - calc syncing error between cue and face onsets
 ptbcfonsetdiff = ptbfaceonset - ptbcueonset;
-reccueonset    = [event(1:2:end).sample] ./ hdr.Fs;
-recfaceonset   = [event(2:2:end).sample] ./ hdr.Fs;
-recfaceonset   = recfaceonset - reccueonset(1); % start timeline at 0
-reccueonset    = reccueonset - reccueonset(1); % start timeline at 0
 reccfonsetdiff = ([event(2:2:end).sample]-[event(1:2:end).sample]) ./ hdr.Fs;
 cfodsyncerror = ptbcfonsetdiff-reccfonsetdiff;
 cfodsyncerror = cfodsyncerror*1000;
