@@ -265,9 +265,42 @@ ptb = load(cfg.eventfile);
 % check whether number of detected trials in PTB and EDF/BESA correspond
 ptbntrial = numel(ptb.dat.cueType);
 disp(['found ' num2str(ptbntrial) ' trials in PTB output'])
-% throw error if number of trials in PTB mat-file is different from that in EDF/BESA file
+% deal with number of trials in PTB mat-file being different from that in EDF/BESA file
 if ntrial~=ptbntrial
-  error('different number of trials detected in EDF/BESA file and PTB output')
+  if ntrial<ptbntrial
+    % two possible causes:
+    % 1) too few events detect, event diode detection failed
+    % 2) recording was switched on too late, or switched off too early (*sigh*)
+    % Rather than allowing an exception to occur (in the case of cause 2) for every subject, I'm only gonna allow it for those
+    % in which I know it occurs, which is safer
+    
+    % parse file name to identify dataset
+    [path sessname ext] = fileparts(cfg.datafile);
+    switch sessname
+      case '2016051512_0005' % a session from IR41 where the recording was turned on too late...
+        % the first trial was not recorded in the diode, cut it out of all dat fields that are used...
+        ptb.dat.cueType      = ptb.dat.cueType(2:end);
+        ptb.dat.faceValence  = ptb.dat.faceValence(2:end);
+        ptb.dat.percValence  = ptb.dat.percValence(2:end);
+        ptb.dat.accuracy     = ptb.dat.accuracy(2:end);
+        ptb.dat.rt           = ptb.dat.rt(2:end);
+        ptb.dat.cueTargetInterval  = ptb.dat.cueTargetInterval(2:end);
+        ptb.dat.interTrialInterval = ptb.dat.interTrialInterval(2:end);
+        ptb.dat.faceIdentity = ptb.dat.faceIdentity(2:end);
+        if isfield(ptb.dat,'frames') % time stamps are present
+          remind = 1:find(diff(ptb.dat.frameID==10)==-1,1); % removes trial defined by last response frame of first trial
+          ptb.dat.frameID(remind) = [];
+          ptb.dat.frames(remind) = [];
+        end
+        ptbntrial = 59;
+        disp('exception for IR42: 2016051512_0005 - recording switched on too late, using last 59 trials from PTB output')
+      otherwise
+        error('different number of trials detected in EDF/BESA file and PTB output, evaluate diode event detection or add exception')
+    end
+  else
+    % too many events detected, diode event detection failed
+    error('different number of trials detected in EDF/BESA file and PTB output')
+  end    
 end
 % change some of the coding
 ptb.dat.cueType = ~ptb.dat.cueType + 1;          % is  1 = predictive, 0 = nonpredictive, change to 1 = predictive, 2 = unpredictive
@@ -285,7 +318,7 @@ if isfield(ptb.dat,'frames') % time stamps are present
   faceframes     = ptb.dat.frameID==4; % 4 = target
   ptbfaceonset   = ptb.dat.frames(diff(faceframes)==1);
   % fetch response cue onset from timestamps
-  faceframes     = ptb.dat.frameID==10; % 10 = respone screen
+  faceframes     = ptb.dat.frameID==10; % 10 = response screen
   ptb.respcueons = ptb.dat.frames(diff(faceframes)==1);
   ptb.respcueons = ptb.respcueons - ptbcueonset; % these should be relative from cue onset (t=0)
   
@@ -346,7 +379,7 @@ cuefaceint = ([event(2:2:end).sample]-[event(1:2:end).sample]+1) ./ hdr.Fs - cue
 % use 5ms, to capture not only frame errors, but also serious diode errors (not, at 5khz, 5ms is an error of 25 samples)
 remind = (cuedur < (.200-.005)) | (cuedur > (.200+.005)) | (facedur < (.050-.005)) | (facedur > (.050+.005)) | (abs(cuefaceint-ptb.dat.cueTargetInterval)>0.005); 
 % instead of removing the trail from all possible fields, remove them from the selection
-trialind = 1:60;
+trialind = 1:ptbntrial;
 trialind(remind) = [];
 ntrial   = numel(trialind);
 
@@ -355,20 +388,20 @@ ntrial   = numel(trialind);
 if debugflg
   subplot(2,1,2)
   hold on
-  lincol = lines(60); 
+  lincol = lines(ptbntrial); 
   % plot diode cue/face+isi
   lincol(remind,:) = repmat([.8 .8 .8],[sum(remind) 1]); % grey out removed trials
   reccfpairs = [reccueonset; recfaceonset];
-  for itrial = 1:60
+  for itrial = 1:ntrial
     plot(reccfpairs(:,itrial),[1.05 1.05],'marker','^','color',lincol(itrial,:))
   end
   % plot ptb cue/face+isi
   ptbcfpairs = [ptbcueonset; ptbfaceonset];
-  for itrial = 1:60
+  for itrial = 1:ptbntrial
     plot(ptbcfpairs(:,itrial),[1 1],'marker','v','color',lincol(itrial,:))
   end
   % plot connecting lines
-  for itrial = 1:60
+  for itrial = 1:ptbntrial
     plot([reccfpairs(1,itrial) ptbcfpairs(1,itrial)],[1.05 1],'color',lincol(itrial,:))
     plot([reccfpairs(2,itrial) ptbcfpairs(2,itrial)],[1.05 1],'color',lincol(itrial,:))
   end
@@ -410,8 +443,8 @@ end
 % sync was succesful
 disp('syncing deviations are within tolerance') 
 % timing check 
-disp([num2str(60-ntrial) ' trials had cue/face+isi duration timing errors that exceeded 5ms and were removed'])
-if (60-ntrial)>5
+disp([num2str(ptbntrial-ntrial) ' trials had cue/face+isi duration timing errors that exceeded 5ms and were removed'])
+if (ptbntrial-ntrial)>5
   warning('more than 5 trials were removed due cue/face+isi duration timing errors that exceeded 5ms')
 end
 %%%%%%%%%%%
@@ -423,13 +456,12 @@ disp(['creating trl matrix containing ' num2str(ntrial) ' trials with mean(SD) c
 
 % see documentation above for individual columns
 trl = [];
-eventind = 1:2:(60*2); % event is serialized structure of 2 events per trial
 for itrial = trialind
-  curreventind = eventind(itrial);
+  curreventind = [(itrial*2)-1 (itrial*2)];
   
   % get trl samples
-  begsample = event(curreventind).sample   -round(cfg.prestim  * hdr.Fs); % cue onset  - prestim
-  endsample = event(curreventind+1).sample +round(cfg.poststim * hdr.Fs); % face onset + poststim
+  begsample = event(curreventind(1)).sample   -round(cfg.prestim  * hdr.Fs); % cue onset  - prestim
+  endsample = event(curreventind(2)).sample +round(cfg.poststim * hdr.Fs); % face onset + poststim
   offset    = -round(cfg.prestim*hdr.Fs);
   % get trial info from PTB
   predunpred = ptb.dat.cueType(itrial);      % 1 = predictive, 2 = unpredictive
@@ -440,14 +472,14 @@ for itrial = trialind
   faceindex  = ptb.dat.faceIdentity(itrial); 
 
   % get various latencies
-  faceonset  = ((event(curreventind+1).sample)-(event(curreventind).sample)+1) ./ hdr.Fs; % t=0 is sample=1(-offset)
+  faceonset  = ((event(curreventind(2)).sample)-(event(curreventind(1)).sample)+1) ./ hdr.Fs; % t=0 is sample=1(-offset)
   respcueons = ptb.respcueons(itrial);
   % respcueons could be on a timepoint that doesn't match a sample, find closest one
   respcueons = round(respcueons .* hdr.Fs) ./ hdr.Fs;
   
   % grab duration of cue and face+isi
-  cuediodur  = event(curreventind).duration;
-  facediodur = event(curreventind+1).duration;
+  cuediodur  = event(curreventind(1)).duration;
+  facediodur = event(curreventind(2)).duration;
   
   % put all in trl
   trl(end+1,:) = [begsample endsample offset predunpred fearneut hitmiss rt faceonset respcueons faceindex cuediodur facediodur];
