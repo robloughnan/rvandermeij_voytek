@@ -44,6 +44,7 @@ function lnspectra = rmr_findlinespectra(dat,fsample,searchrange,param)
 %                       param = structure, containing additional inputs
 %               param.zthresh = scalar, Z-value to use as threshold for catching peaks (default = 2)
 %              param.welchwin = scalar, length in seconds of Welch window to use for PSD (default = 10)
+%             param.bandwmin  = scalar, minimum filter half bandwidth in Hz (default = 0.5)
 %             param.bandwstep = scalar, half bandwidth in Hz, stepsize for determining filter bandwidth (default = 0.25)
 %                 param.taper = string, taper to use for spectral estimation (default = 'hanning')
 %              param.filttype = string, type of bandstop filter  'but' (default),  'fir', etc (FieldTrip-style name)
@@ -60,7 +61,7 @@ function lnspectra = rmr_findlinespectra(dat,fsample,searchrange,param)
 %          lnspectra.filttype = string, filter type of bandstop filter used
 %           lnspectra.filtord = scalar, order of  bandstop filter used
 %           lnspectra.filtdir = string, filter direction of bandstop filter used
-%        lnspectra.edgeartlen = scalar, length in seconds of the edge artifact to be removed
+%        lnspectra.edgeartlen = scalar, rough estimate of edge artifact length to be removed in seconds (only when filttype = 'but')
 %              lnspectra.freq = 1xN vector, freq axis for PSDs below
 %           lnspectra.origpsd = 1xN vector, PSD before filtering, for inspection purposes
 %           lnspectra.filtpsd = 1xN vector, PSD after filtering, for inspection purposes
@@ -77,10 +78,11 @@ function lnspectra = rmr_findlinespectra(dat,fsample,searchrange,param)
 % set defaults 
 if ~isfield(param,   'zthresh'),     param.zthresh     = 2;            end
 if ~isfield(param,   'welchwin'),    param.welchwin    = 10;           end
+if ~isfield(param,   'bandwmin'),    param.bandwmin    = 0.5;          end
 if ~isfield(param,   'bandwstep'),   param.bandwstep   = 0.25;         end
 if ~isfield(param,   'taper'),       param.taper       = 'hanning';    end
 if ~isfield(param,   'filttype'),    param.filttype    = 'but';        end
-if ~isfield(param,   'filtord'),     param.filtord     = 2;            end
+if ~isfield(param,   'filtord'),     param.filtord     = 4;            end
 if ~isfield(param,   'filtdir'),     param.filtdir     = 'twopass';    end
 if ~isfield(param,   'maxouterit'),  param.maxouterit  = 5;            end
 if ~isfield(param,   'maxinnerit'),  param.maxinnerit  = 5;            end
@@ -118,7 +120,7 @@ while peaksremaining
   pspecprpow{itouter} = procpow;
   
   % find  peaks
-  [peaks, bandwidth] = findpeaks(procpow,freq,param.zthresh,param.bandwstep);
+  [peaks, bandwidth] = findpeaks(procpow,freq,param.zthresh,param.bandwmin);
   if ~isempty(peaks)
     disp(['found ' num2str(numel(peaks)) ' line spectra in pass ' num2str(itouter)])
     for ipeak = 1:numel(peaks)
@@ -136,19 +138,20 @@ while peaksremaining
   peakgone = false(size(peaks));
   itinner = 0;
   while ~all(peakgone)
+    newfiltdat = filtdat;
     itinner = itinner + 1;
     
     % filter data, but do it per channel to save memory
     for ipeak = 1:numel(peaks)
       % apply a bandstop filter
       disp(['applying filter for peak at ' num2str(peaks(ipeak)) 'Hz +/- ' num2str(bandwidth(ipeak)) 'Hz'])
-      for ichan = 1:size(filtdat,1)
-        filtdat(ichan,:) = ft_preproc_bandstopfilter(filtdat(ichan,:), fsample, [peaks(ipeak)-bandwidth(ipeak) peaks(ipeak)+bandwidth(ipeak)], param.filtord, param.filttype, param.filtdir);
+      for ichan = 1:size(newfiltdat,1)
+        newfiltdat(ichan,:) = ft_preproc_bandstopfilter(newfiltdat(ichan,:), fsample, [peaks(ipeak)-bandwidth(ipeak) peaks(ipeak)+bandwidth(ipeak)], param.filtord, param.filttype, param.filtdir);
       end
     end
     
     % get pow and process it, using same zval-ling as used initially
-    [pow, freq] = getpow(filtdat,fsample,searchrange,param.welchwin,param.taper);
+    [pow, freq] = getpow(newfiltdat,fsample,searchrange,param.welchwin,param.taper);
     procpow = processpow(pow,freq,zparam);
     
     % assess residual peak presence per peak, report in peaksgone, and increase bandwidth if necessary
@@ -157,7 +160,6 @@ while peaksremaining
       currbandw = bandwidth(ipeak);
       currind   = find(freq>=(currpeak-currbandw) & freq<=(currpeak+currbandw));
       if any(procpow(currind)>param.zthresh)
-        changed = true;
         bandwidth(ipeak) = bandwidth(ipeak) + param.bandwstep;
         disp(['increased bandwidth for line spectra at ' num2str(peaks(ipeak)) 'Hz to +/-' num2str(bandwidth(ipeak)) 'Hz'])
       else
@@ -173,9 +175,10 @@ while peaksremaining
   end
   %%%%%%%%%%%%%%%%%%%%%
   
-  % save pass-specific peaks and bandwidth
+  % save pass-specific peaks and bandwidth, and new filtdat
   pspecpeaks{itouter} = peaks;
   pspecbandw{itouter} = bandwidth;
+  filtdat = newfiltdat;
   
   % stop if it goes on too long
   if itouter == param.maxouterit
@@ -190,15 +193,26 @@ bandwidth = cat(2,pspecbandw{:});
 
 
 % determine approximate length of impulse response at 98% of impulse response (determined by sum of abs)
-edgeartlen = NaN(1,numel(peaks));
-for ipeak = 1:numel(peaks)
-  fakedat = zeros(1,round(10*fsample));
-  fakedat(1) = 1;
-  impresp  = ft_preproc_bandstopfilter(fakedat, fsample, [peaks(ipeak)-bandwidth(ipeak) peaks(ipeak)+bandwidth(ipeak)], param.filtord, param.filttype, param.filtdir);
-  impresp  = impresp ./ sum(abs(impresp));
-  edgeartlen(ipeak) = (find(cumsum(abs(impresp))>0.99,1)*2)./fsample;
+if strcmp(param.filttype,'but') && (strcmp(param.filtdir,'twopass') || strcmp(param.filtdir,'onepass'))
+  edgeartlen = NaN(1,numel(peaks));
+  for ipeak = 1:numel(peaks)
+    fakedat = zeros(1,round(10*fsample));
+    fakedat(1) = 1;
+    impresp  = ft_preproc_bandstopfilter(fakedat, fsample, [peaks(ipeak)-bandwidth(ipeak) peaks(ipeak)+bandwidth(ipeak)], param.filtord, param.filttype, 'onepass');
+    impresp  = impresp ./ sum(abs(impresp));
+    edgeartlen(ipeak) = (find(cumsum(abs(impresp))>0.98,1))./fsample; % 
+  end
+  if any(edgeartlen==10)
+    error('fakedat too small')
+  end
+  if strcmp(param.filtdir,'twopass')
+    edgeartlen = max(edgeartlen) * 2;
+  else
+    edgeartlen = max(edgeartlen);
+  end
+else
+  edgeartlen = [];
 end
-edgeartlen = max(edgeartlen);
 
 % produce filtpow for output structure
 [filtpow, freqorig]     = getpow(filtdat,fsample,searchrange,param.welchwin,param.taper);
@@ -421,7 +435,7 @@ procpow  = mean(procpow,1);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Find peaks and determine bandwidth
-function [peaks, bandwidth] = findpeaks(procpow,freq,zthresh,startbandw)
+function [peaks, bandwidth] = findpeaks(procpow,freq,zthresh,minbandw)
 
 % find threshold crossings
 passthresh = procpow>zthresh;
@@ -433,7 +447,7 @@ if any(passthresh)
   peaks = freq(round(mean(passind,2)));
   % get bandwidth start values
   bandwidth = freq(passind(:,2))-freq(passind(:,1));
-  bandwidth(bandwidth<startbandw) = startbandw;
+  bandwidth(bandwidth<minbandw) = minbandw;
   % ensure maximal accuracy of .1Hz
   peaks     = round(peaks*100)/100;
   bandwidth = round(bandwidth*100)/100;
