@@ -22,13 +22,13 @@ function lnspectra = rmr_findlinespectra(dat,fsample,searchrange,param)
 % The result processed PSD is then used to find peaks.
 % 
 % The peak finding algorithm consists of two iterative loops, having the following logic:
-% 1) get PSD in normal/log space
+% 1) get PSD in normal/log space (do this temp.deriv. of data, helps flattening)
 % 2) filter PSD to flatten it
 % 3) z-value and average over channels
 % 4) threshold and determine peaks as center of contiguous frequency bins above threshold
 % 5) if peaks exist:
 %   a) filter data
-%   b) get PSD in normal/log space
+%   b) get PSD in normal/log space (do using temp.deriv. of data, helps flattening)
 %   c) filter PSD to flatten it
 %   d) z-value and average over channels (using z-value from 3)
 %   e) if peaks are not fully suppressed, increase bandwidth and return to a
@@ -110,7 +110,7 @@ while peaksremaining
   itouter = itouter + 1;
   
   % get pow
-  [pow, freq] = getpow(filtdat,fsample,searchrange,param.welchwin,param.taper);
+  [pow, freq] = getpow(diff(filtdat,[],2),fsample,searchrange,param.welchwin,param.taper);
   % process pow
   [procpow,zparam] = processpow(pow,freq,[],peaks,bandwidth);
   
@@ -131,7 +131,7 @@ while peaksremaining
   end
   
   
-  %%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%% 
   % iteratively increase bandwidth till all peaks are gone
   peakgone = false(size(peaks));
   itinner = 0;
@@ -291,10 +291,10 @@ function [pow, freq] = getpow(dat,fsample,searchrange,welchwin,taper)
 nsample = size(dat,2);
 nchan   = size(dat,1);
 
-%%%% get PSD using a welch approach WILL BE SUBFUNCTION LATER
-% determine the welch windows to loop over, 75% overlap
+%%%% get PSD using a welch approach
+% determine the welch windows to loop over, 25% overlap
 nsampwelch   = round(welchwin .* fsample); % samples in a welch window
-welchwinstep = round(nsampwelch ./ 4); % steps in between windows
+welchwinstep = round(nsampwelch .* (3/4)); % steps in between windows
 welchindbeg  = 1:welchwinstep:nsample;
 welchindend  = nsampwelch:welchwinstep:nsample;
 welchindbeg  = welchindbeg(1:numel(welchindend));
