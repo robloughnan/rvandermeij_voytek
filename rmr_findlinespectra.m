@@ -215,7 +215,7 @@ lnspectra.filtdir    = param.filtdir;
 lnspectra.edgeartlen = edgeartlen;
 lnspectra.freq       = freqorig; 
 lnspectra.origpsd    = origpow;
-lnspectra.filtpsd    = pow; % latest pow is maximally filtered pow
+lnspectra.filtpsd    = filtpow; 
 
 
 
