@@ -460,7 +460,7 @@ for itrial = trialind
   curreventind = [(itrial*2)-1 (itrial*2)];
   
   % get trl samples
-  begsample = event(curreventind(1)).sample   -round(cfg.prestim  * hdr.Fs); % cue onset  - prestim
+  begsample = event(curreventind(1)).sample -round(cfg.prestim  * hdr.Fs); % cue onset  - prestim
   endsample = event(curreventind(2)).sample +round(cfg.poststim * hdr.Fs); % face onset + poststim
   offset    = -round(cfg.prestim*hdr.Fs);
   % get trial info from PTB
@@ -484,6 +484,17 @@ for itrial = trialind
   % put all in trl
   trl(end+1,:) = [begsample endsample offset predunpred fearneut hitmiss rt faceonset respcueons faceindex cuediodur facediodur];
 end
+% remove trials that fall outside of bounds
+if any(trl(:,1)<1)
+  warning([num2str(sum(trl(:,1)<1)) ' trial(s) start before the recording due to cfg.prestim and were removed' ])
+  trl(trl(:,1)<1,:) = [];
+end
+if any(trl(:,2)>hdr.nSamples)
+  warning([num2str(sum(trl(:,2)>hdr.nSamples)) ' trial(s) end after the recording due to cfg.poststim and were removed' ])
+  trl(trl(:,2)>hdr.nSamples,:) = [];
+end
+
+
 
 % modify event structure for output
 for ievent = 1:numel(event)
