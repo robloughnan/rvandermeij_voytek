@@ -392,7 +392,7 @@ if debugflg
   % plot diode cue/face+isi
   lincol(remind,:) = repmat([.8 .8 .8],[sum(remind) 1]); % grey out removed trials
   reccfpairs = [reccueonset; recfaceonset];
-  for itrial = 1:ntrial
+  for itrial = 1:ptbntrial
     plot(reccfpairs(:,itrial),[1.05 1.05],'marker','^','color',lincol(itrial,:))
   end
   % plot ptb cue/face+isi
