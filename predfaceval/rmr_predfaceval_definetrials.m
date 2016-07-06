@@ -8,7 +8,7 @@ function [trl,event] = rmr_predfaceval_definetrials(cfg)
 % events coming from the diode.
 %
 % For all trials, t=0 is the onset of the CUE. The prestimulus period (tied to CUE) and
-% poststimulus period (tied to FACE) can be defined using the options below. 
+% poststimulus period (tied to FACE) can be defined using the options below.
 %
 % The trl matrix describes a trial per row, where each column describes:
 %  1) begsample   - beginning sample of trial
@@ -33,6 +33,10 @@ function [trl,event] = rmr_predfaceval_definetrials(cfg)
 %   cfg.diodechan = string, name of the analog channel containing the photo diode measurements, as specified in the EDF/BESA header
 %   cfg.prestim   = scalar, latency in seconds before CUE ONSET
 %   cfg.poststim  = scalar, latency in seconds after  FACE ONSET
+% The following option(s) are optional:
+%   cfg.threshold = 1x2 vector, thresholds for the upgoing (1) and downgoing (2) flank of diode events. For each cue/face event,
+%                               the beginning and end points are found closest to these values. These values should be chosen for an individual
+%                               session.
 %
 % This functions syncs the events recorded by the photo diode in the EDF/BESA file with the output in the PTB file.
 % Syncing is performed on a per trial basis using the onset of the cue
@@ -55,6 +59,8 @@ function [trl,event] = rmr_predfaceval_definetrials(cfg)
 %
 %
 
+% set defaults
+cfg.threshold = ft_getopt(cfg, 'threshold', []);
 
 % check for necessary options
 if ~isfield(cfg, 'eventfile') || ~isfield(cfg, 'datafile')
@@ -71,6 +77,10 @@ if isfield(cfg,'debugflg')
 else
   debugflag = false;
 end
+if ~isempty(cfg.threshold) && numel(cfg.threshold)~=2
+  error('cfg.threshold should contain two values')
+end
+
 
 % disp the input
 datafnprts  = strsplit(cfg.datafile,{'\','/'});
@@ -97,7 +107,7 @@ diodestep = mean(diodediff(1:round(hdr.Fs*0.100))); % take 100ms of the minimal 
 % prune events, which is necessary due to DAC noise (the diode signal can flip one DAC value back and forth, which can cause faulty event detection)
 falseeventind = [];
 for ievent = 1:numel(event)
-  switch event(ievent).type    
+  switch event(ievent).type
     case [cfg.diodechan '_up']
       % when up, 75% of the next non-constant 20 samples should agree
       futsmp = diodesig(event(ievent).sample+1:(event(ievent).sample+20));
@@ -106,7 +116,7 @@ for ievent = 1:numel(event)
         falseeventind = [falseeventind ievent];
       end
     case [cfg.diodechan '_down']
-      % when down, 75% of the previous non-constant 50 samples should agree (downgoing flank flatt
+      % when down, 75% of the previous non-constant 50 samples should agree (downgoing flank flat)
       futsmp = diodesig((event(ievent).sample-50):(event(ievent).sample-1));
       nconst = sum(diff(futsmp)==0);
       if sum(sign(diff(futsmp)) == -1) <((50-nconst)*.75)
@@ -132,43 +142,63 @@ disp([num2str(sum([numel(falseeventind) sum(upindrep) sum(downindrep)])) ' singl
 for ievent = 1:numel(event)
   switch event(ievent).type
     case [cfg.diodechan '_up']
-      % search backward in time with a sliding window until the start of the up-flank has been found
-      % (diode signal rise speed increases with time)
-      found = 0;
-      lastsmp = event(ievent).sample;
-      while ~found
-        nsmp = 40;
-        smpwin = (lastsmp-nsmp-1):(lastsmp);
-        winmean = mean(diodesig(smpwin));
-        if (winmean-diodesig(lastsmp))<(-diodestep*2.5) % difference between window and last sample should be at least 2 steps (2.5 to account for small variotions in stepsize)
-          % continue search
-          lastsmp = lastsmp - 1;
-        else
-          % end found
-          lastsmp = lastsmp + 1; % previous was correct one
-          found = true;
-          event(ievent).sample = lastsmp;
+      if isempty(cfg.threshold)
+        % search backward in time with a sliding window until the start of the up-flank has been found
+        % (diode signal rise speed increases with time)
+        found = 0;
+        lastsmp = event(ievent).sample;
+        while ~found
+          nsmp = 40;
+          smpwin = (lastsmp-nsmp-1):(lastsmp);
+          winmean = mean(diodesig(smpwin));
+          if (winmean-diodesig(lastsmp))<(-diodestep*2.5) % difference between window and last sample should be at least 2 steps (2.5 to account for small variotions in stepsize)
+            % continue search
+            lastsmp = lastsmp - 1;
+          else
+            % end found
+            lastsmp = lastsmp + 1; % previous was correct one
+            found = true;
+            event(ievent).sample = lastsmp;
+          end
         end
+      else
+        % find first sample after crossing threshold, searching backwards maximally a 50ms
+        oldsmp     = event(ievent).sample;
+        nsmpsearch = round(0.050*hdr.Fs);
+        searchsig  = diodesig((oldsmp-nsmpsearch):oldsmp); 
+        ind        = find(diff(sign(searchsig-cfg.threshold(1))),1,'last');
+        newsmp     = oldsmp - (nsmpsearch - ind);
+        event(ievent).sample = newsmp;
       end
       
     case [cfg.diodechan '_down']
-      % search backward in time with a sliding window until the start of the down-flank has been found
-      % (diode signal decay speed decreases with time)
-      found = 0;
-      lastsmp = event(ievent).sample;
-      while ~found
-        nsmp = 40;
-        smpwin = (lastsmp-nsmp-1):(lastsmp);
-        winmean = mean(diodesig(smpwin));
-        if (winmean-diodesig(lastsmp))>(diodestep*2.5) % difference between window and last sample should be at least 2 steps (2.5 to account for small variotions in stepsize)
-          % continue search
-          lastsmp = lastsmp - 1;
-        else
-          % end found
-          lastsmp = lastsmp + 1; % previous was correct one
-          found = true;
-          event(ievent).sample = lastsmp; 
+      if isempty(cfg.threshold)
+        % search backward in time with a sliding window until the start of the down-flank has been found
+        % (diode signal decay speed decreases with time)
+        found = 0;
+        lastsmp = event(ievent).sample;
+        while ~found
+          nsmp = 40;
+          smpwin = (lastsmp-nsmp-1):(lastsmp);
+          winmean = mean(diodesig(smpwin));
+          if (winmean-diodesig(lastsmp))>(diodestep*2.5) % difference between window and last sample should be at least 2 steps (2.5 to account for small variotions in stepsize)
+            % continue search
+            lastsmp = lastsmp - 1;
+          else
+            % end found
+            lastsmp = lastsmp + 1; % previous was correct one
+            found = true;
+            event(ievent).sample = lastsmp;
+          end
         end
+      else
+        % find first sample before crossing threshold, searching backwards maximally a 50ms
+        oldsmp     = event(ievent).sample;
+        nsmpsearch = round(0.050*hdr.Fs);
+        searchsig  = diodesig((oldsmp-nsmpsearch):oldsmp); 
+        ind        = find(diff(sign(searchsig-cfg.threshold(2))),1,'last');
+        newsmp     = oldsmp - (nsmpsearch - ind);
+        event(ievent).sample = newsmp;
       end
       
   end
@@ -234,6 +264,13 @@ if debugflg
     plot([precleanevent(othereventind).sample]./hdr.Fs,diodesig([precleanevent(othereventind).sample]),'vgr')
     legend({'diode signal','detected up/down events','final cue/face+isi events','removed cue/face+isi events'})
   end
+  if ~isempty(cfg.threshold)
+    x = [1 numel(diodesig)]./hdr.Fs;
+    y = [cfg.threshold(1) cfg.threshold(1)];
+    line(x,y,'color',[.5 .5 .5],'linestyle','--')
+    y = [cfg.threshold(2) cfg.threshold(2)];
+    line(x,y,'color',[.5 .5 .5],'linestyle','--')
+  end
   xlabel('time(s)')
   ylabel('diode signal strength')
   title(['diode events of ' datafnprts{end}],'interpreter','none')
@@ -241,7 +278,7 @@ end
 % diode debug plotting
 %%%%%
 
-% act upon found events 
+% act upon found events
 if ~isempty(event)
   cueind  = find(strcmp({event.type},'cue'));
   faceind = find(strcmp({event.type},'face+isi'));
@@ -300,7 +337,7 @@ if ntrial~=ptbntrial
   else
     % too many events detected, diode event detection failed
     error('different number of trials detected in EDF/BESA file and PTB output')
-  end    
+  end
 end
 % change some of the coding
 ptb.dat.cueType = ~ptb.dat.cueType + 1;          % is  1 = predictive, 0 = nonpredictive, change to 1 = predictive, 2 = unpredictive
@@ -372,12 +409,12 @@ reccfonsetdiff = ([event(2:2:end).sample]-[event(1:2:end).sample]) ./ hdr.Fs;
 cfodsyncerror = ptbcfonsetdiff-reccfonsetdiff;
 cfodsyncerror = cfodsyncerror*1000;
 
-% timing check: remove trials where cue/face+isi durations were wrong 
+% timing check: remove trials where cue/face+isi durations were wrong
 cuedur     = [event(1:2:end).duration];
 facedur    = [event(2:2:end).duration];
 cuefaceint = ([event(2:2:end).sample]-[event(1:2:end).sample]+1) ./ hdr.Fs - cuedur;
 % use 5ms, to capture not only frame errors, but also serious diode errors (not, at 5khz, 5ms is an error of 25 samples)
-remind = (cuedur < (.200-.005)) | (cuedur > (.200+.005)) | (facedur < (.050-.005)) | (facedur > (.050+.005)) | (abs(cuefaceint-ptb.dat.cueTargetInterval)>0.005); 
+remind = (cuedur < (.200-.005)) | (cuedur > (.200+.005)) | (facedur < (.050-.005)) | (facedur > (.050+.005)) | (abs(cuefaceint-ptb.dat.cueTargetInterval)>0.005);
 % instead of removing the trail from all possible fields, remove them from the selection
 trialind = 1:ptbntrial;
 trialind(remind) = [];
@@ -388,7 +425,7 @@ ntrial   = numel(trialind);
 if debugflg
   subplot(2,1,2)
   hold on
-  lincol = lines(ptbntrial); 
+  lincol = lines(ptbntrial);
   % plot diode cue/face+isi
   lincol(remind,:) = repmat([.8 .8 .8],[sum(remind) 1]); % grey out removed trials
   reccfpairs = [reccueonset; recfaceonset];
@@ -417,7 +454,7 @@ end
 % syncing check 1 - syncing error after aligning to cue of first trial
 disp(['experiment-wide recording-ptb timing offset: max = ' num2str(max(abs(cosyncerror))) 'ms  med(sd) = ' num2str(median(cosyncerror)) 'ms (' num2str(std(cosyncerror)) 'ms)'])
 if hastimestamps
-  if max(abs(cosyncerror))>200 
+  if max(abs(cosyncerror))>200
     error('severe error (>200ms) detected in syncing recording and PTB experiment-wide time-axis')
   end
 else
@@ -441,8 +478,8 @@ else
   end
 end
 % sync was succesful
-disp('syncing deviations are within tolerance') 
-% timing check 
+disp('syncing deviations are within tolerance')
+% timing check
 disp([num2str(ptbntrial-ntrial) ' trials had cue/face+isi duration timing errors that exceeded 5ms and were removed'])
 if (ptbntrial-ntrial)>5
   warning('more than 5 trials were removed due cue/face+isi duration timing errors that exceeded 5ms')
@@ -469,8 +506,8 @@ for itrial = trialind
   respval    = ptb.dat.percValence(itrial);  % 1 = fear, 2 = neutral
   hitmiss    = fearneut == respval;          % 1 = hit, 0 = miss
   rt         = ptb.dat.rt(itrial);           % in seconds
-  faceindex  = ptb.dat.faceIdentity(itrial); 
-
+  faceindex  = ptb.dat.faceIdentity(itrial);
+  
   % get various latencies
   faceonset  = ((event(curreventind(2)).sample)-(event(curreventind(1)).sample)+1) ./ hdr.Fs; % t=0 is sample=1(-offset)
   respcueons = ptb.respcueons(itrial);
@@ -516,7 +553,7 @@ for ievent = 1:numel(event)
   event(ievent).respval    = ptb.dat.percValence(currtrial);  % 1 = fear, 2 = neutral
   event(ievent).hitmiss    = event(ievent).fearneut == event(ievent).respval;  % 1 = hit, 0 = miss
   event(ievent).rt         = ptb.dat.rt(currtrial);           % in seconds
-  event(ievent).faceindex  = ptb.dat.faceIdentity(currtrial); 
+  event(ievent).faceindex  = ptb.dat.faceIdentity(currtrial);
 end
 % set event.type to value and set type to duide per FT convention
 for ievent = 1:numel(event)
