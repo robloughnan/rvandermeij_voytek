@@ -82,7 +82,7 @@ if ~isfield(param,   'bandwmin'),    param.bandwmin    = 0.5;          end
 if ~isfield(param,   'bandwstep'),   param.bandwstep   = 0.25;         end
 if ~isfield(param,   'taper'),       param.taper       = 'hanning';    end
 if ~isfield(param,   'filttype'),    param.filttype    = 'but';        end
-if ~isfield(param,   'filtord'),     param.filtord     = 4;            end
+if ~isfield(param,   'filtord'),     param.filtord     = 2;            end
 if ~isfield(param,   'filtdir'),     param.filtdir     = 'twopass';    end
 if ~isfield(param,   'maxouterit'),  param.maxouterit  = 5;            end
 if ~isfield(param,   'maxinnerit'),  param.maxinnerit  = 5;            end
@@ -137,6 +137,7 @@ while peaksremaining
   % iteratively increase bandwidth till all peaks are gone
   peakgone = false(size(peaks));
   itinner = 0;
+  newfiltdat = filtdat;
   while ~all(peakgone)
     newfiltdat = filtdat;
     itinner = itinner + 1;
@@ -249,7 +250,11 @@ end
 l3 = plot(freq,mean(log10(lnspectra.filtpsd),1),'color',rgb('blue'));
 xlabel('frequency (Hz)')
 ylabel('log mean (over channels) power')
-legend([l1 l2 l3],'orignal PSD','identified as line spectrum','filtered PSD');
+if numel(peaks)>1
+  legend([l1 l2 l3],'orignal PSD','identified as line spectrum','filtered PSD');
+else
+  legend([l1 l3],'orignal PSD','filtered PSD');
+end
 title('result of bandstop filtering line spectra')
 
 % 2) original PSD and filtered PSD in log/norm space, for input Welch window and for a 50ms window
@@ -281,7 +286,11 @@ for ipass = 1:npass
   l3 = line([freq(1) freq(end)],[param.zthresh param.zthresh],'linestyle','--','color',rgb('dark green'));
   xlabel('frequency (Hz)')
   ylabel('log mean (over channels) power')
-  legend([l1 l2 l3],'processed PSD','identified as line spectrum','threshold');
+  if numel(currpeaks)>1
+     legend([l1 l2 l3],'processed PSD','identified as line spectrum','threshold');
+  else
+    legend([l1 l3],'processed PSD','threshold');
+  end
   title(['PSD and identified peaks of pass ' num2str(ipass)])
   ylim = get(gca,'ylim');
   set(gca,'ylim',[-3 max([ylim(2) 5])])
